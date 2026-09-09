@@ -559,6 +559,22 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
+        function isLocalNetwork() {
+            const host = window.location.hostname;
+            return host === 'localhost' || 
+                   host === '127.0.0.1' || 
+                   host.startsWith('192.168.') || 
+                   host.startsWith('10.') || 
+                   /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) ||
+                   host.endsWith('.local');
+        }
+
+        if (!isLocalNetwork()) {
+            setOverlayState('error', 'Akses Stream Dibatasi', 'Streaming video langsung dibatasi demi keamanan & aturan Cloudflare. Gunakan jaringan lokal atau aplikasi P2P khusus untuk melihat stream dari luar.');
+            if (btnRetry) btnRetry.style.display = 'none'; // Sembunyikan tombol retry untuk error ini
+            return;
+        }
+
         setOverlayState('loading', 'Menghubungkan HLS Stream...', streamUrl);
 
         renderHlsPlayer();
@@ -1195,6 +1211,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             document.getElementById('sysTgBot').value = data.telegramBotToken || '';
             document.getElementById('sysTgChat').value = data.telegramChatId || '';
+            document.getElementById('sysP2pServer').value = data.p2pServer || '';
             
             const recQ = data.recordingQuality || 'main';
             const sysRecEl = document.getElementById('sysRecordingQuality');
@@ -1270,6 +1287,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showTopMonitor: showTop,
             netInterface: netIf,
             recordingPath: chosenStorage,
+            p2pServer: document.getElementById('sysP2pServer').value,
             telegramBotToken: document.getElementById('sysTgBot').value,
             telegramChatId: document.getElementById('sysTgChat').value
         };

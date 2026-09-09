@@ -179,8 +179,23 @@ function verifyToken(req, res, next) {
     jwt.verify(token, JWT_SECRET, (err, decoded) => {
         if (err) return res.status(401).json({ error: 'Unauthorized' });
         req.userId = decoded.id;
+        req.userRole = decoded.role || 'developer'; // Fallback to developer for old tokens
         next();
     });
+}
+
+function requireAdmin(req, res, next) {
+    if (req.userRole !== 'developer' && req.userRole !== 'administrator') {
+        return res.status(403).json({ error: 'Forbidden: Requires Administrator privileges' });
+    }
+    next();
+}
+
+function requireDeveloper(req, res, next) {
+    if (req.userRole !== 'developer') {
+        return res.status(403).json({ error: 'Forbidden: Requires Developer privileges' });
+    }
+    next();
 }
 
 // Auth Endpoints
@@ -210,12 +225,12 @@ app.post('/api/auth/setup', (req, res) => {
     if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
     
     const hashedPassword = bcrypt.hashSync(password, 8);
-    const user = { id: Date.now().toString(), username, password: hashedPassword };
+    const user = { id: Date.now().toString(), username, password: hashedPassword, role: 'developer' };
     
     dbData.users = [user];
     saveNvrDb(dbData);
     
-    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+    const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
     res.cookie('nvr_auth_token', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
     res.json({ success: true });
 });
@@ -229,7 +244,8 @@ app.post('/api/auth/login', (req, res) => {
         return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '24h' });
+    const role = user.role || 'developer';
+    const token = jwt.sign({ id: user.id, username: user.username, role }, JWT_SECRET, { expiresIn: '24h' });
     res.cookie('nvr_auth_token', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
     res.json({ success: true });
 });
@@ -800,7 +816,7 @@ app.get('/api/cameras', verifyToken, (req, res) => {
     res.json({ cameras: cams, mediamtxPort: currentSettings.mediamtxPort || 8889, mediamtxHost: currentSettings.mediamtxHost || '' });
 });
 
-app.post('/api/cameras', verifyToken, (req, res) => {
+app.post('/api/cameras', verifyToken, requireAdmin, (req, res) => {
     const { id, name, enabled, mainStreamUrl, subStreamUrl, rtspUrl, storagePath, resolution, fps, recordMode, maxStorageDays, maxFolderSizeGB, segmentDurationSec, transcode } = req.body;
     const cams = getCameras();
     
@@ -837,7 +853,7 @@ app.post('/api/cameras', verifyToken, (req, res) => {
     res.json({ success: true, camera: newCam });
 });
 
-app.put('/api/cameras/:id', verifyToken, (req, res) => {
+app.put('/api/cameras/:id', verifyToken, requireAdmin, (req, res) => {
     const cams = getCameras();
     const index = cams.findIndex(c => c.id === req.params.id);
     if (index === -1) return res.status(404).json({error: 'Not found'});
@@ -880,7 +896,7 @@ app.put('/api/cameras/:id', verifyToken, (req, res) => {
     res.json({ success: true });
 });
 
-app.post('/api/cameras/:id/restart', verifyToken, (req, res) => {
+app.post('/api/cameras/:id/restart', verifyToken, requireAdmin, (req, res) => {
     const cams = getCameras();
     const cam = cams.find(c => c.id === req.params.id);
     if (!cam) return res.status(404).json({ error: 'Kamera tidak ditemukan' });
@@ -896,7 +912,7 @@ app.post('/api/cameras/:id/restart', verifyToken, (req, res) => {
     }, 500);
 });
 
-app.delete('/api/cameras/:id', verifyToken, (req, res) => {
+app.delete('/api/cameras/:id', verifyToken, requireAdmin, (req, res) => {
     stopCameraRecording(req.params.id);
     const camStreamDir = path.join(streamBaseDir, req.params.id);
     if (fs.existsSync(camStreamDir)) {
@@ -1370,7 +1386,7 @@ app.get('/api/system/storage-devices', (req, res) => {
 });
 
 // Select Default Storage Device Endpoint (Saves RECORDING_PATH to data/nvr_db.json)
-app.post('/api/system/storage-devices/select', verifyToken, (req, res) => {
+app.post('/api/system/storage-devices/select', verifyToken, requireAdmin, (req, res) => {
     try {
         const { storagePath } = req.body;
         if (!storagePath || typeof storagePath !== 'string') {
@@ -1453,7 +1469,7 @@ app.get('/api/logs', verifyToken, (req, res) => {
     }
 });
 
-app.post('/api/settings', verifyToken, (req, res) => {
+app.post('/api/settings', verifyToken, requireAdmin, (req, res) => {
     const prevQuality = settings.recordingQuality;
     const prevStorageMode = settings.globalStorageMode;
     const prevStoragePath = settings.globalStoragePath;
