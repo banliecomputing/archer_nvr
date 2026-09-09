@@ -531,7 +531,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const spinner = stateOverlay ? stateOverlay.querySelector('.state-spinner') : null;
 
         const streamUrl = getMediaMtxStreamUrl(cam, streamType);
-        const iframeUrl = streamUrl.endsWith('/') ? streamUrl : `${streamUrl}/`; // Trailing slash is safer for MediaMTX UI
+        const iframeUrl = streamUrl; // Use exactly as requested: http://[IP_STB]:8889/[camera_id]
 
         cleanupCameraPlayer(camId);
 
@@ -1181,6 +1181,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sysHostEl) sysHostEl.value = mHost;
             mediamtxHost = mHost;
 
+            const sysShowTopMonitor = data.showTopMonitor !== undefined ? data.showTopMonitor : false;
+            const topMonEl = document.getElementById('sysShowTopMonitor');
+            if (topMonEl) topMonEl.checked = sysShowTopMonitor;
+            const compactBar = document.getElementById('sysMonitorBarCompact');
+            if (compactBar) compactBar.style.display = sysShowTopMonitor ? 'flex' : 'none';
+
+            const sysNetInterface = data.netInterface || 'auto';
+            const netIfEl = document.getElementById('sysNetInterface');
+            if (netIfEl) netIfEl.value = sysNetInterface;
+
             const pMode = data.playerMode || 'iframe';
             const sysPlayerEl = document.getElementById('sysPlayerMode');
             if (sysPlayerEl) sysPlayerEl.value = pMode;
@@ -1199,6 +1209,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const mPort = parseInt(document.getElementById('sysMediaMtxPort')?.value || '8889', 10);
         const mHost = (document.getElementById('sysMediaMtxHost')?.value || '').trim();
         const pMode = document.getElementById('sysPlayerMode')?.value || 'iframe';
+        const showTop = document.getElementById('sysShowTopMonitor')?.checked || false;
+        const netIf = document.getElementById('sysNetInterface')?.value || 'auto';
         const chosenStorage = (document.getElementById('sysCustomStoragePath')?.value || '').trim();
 
         // 1. Simpan Jalur Penyimpanan Rekaman (USB/HDD) jika ditentukan
@@ -1224,6 +1236,8 @@ document.addEventListener('DOMContentLoaded', () => {
             mediamtxPort: mPort,
             mediamtxHost: mHost,
             playerMode: pMode,
+            showTopMonitor: showTop,
+            netInterface: netIf,
             recordingPath: chosenStorage,
             telegramBotToken: document.getElementById('sysTgBot').value,
             telegramChatId: document.getElementById('sysTgChat').value
@@ -1238,6 +1252,9 @@ document.addEventListener('DOMContentLoaded', () => {
         mediamtxPort = mPort;
         mediamtxHost = mHost;
         playerMode = pMode;
+        
+        const compactBar = document.getElementById('sysMonitorBarCompact');
+        if (compactBar) compactBar.style.display = showTop ? 'flex' : 'none';
 
         const globRecEl = document.getElementById('globalRecordingQuality');
         if (globRecEl) globRecEl.value = recQ;

@@ -104,10 +104,12 @@ function getSettings() {
         if (!s.globalStorageMode) s.globalStorageMode = 'disabled';
         if (!s.mediamtxPort) s.mediamtxPort = 8889;
         if (s.mediamtxHost === undefined) s.mediamtxHost = '';
+        if (s.showTopMonitor === undefined) s.showTopMonitor = false;
+        if (!s.netInterface) s.netInterface = 'auto';
         return s;
     }
     catch (e) { 
-        return { globalStorageMode: 'disabled', globalStoragePath: '', recordingQuality: 'main', mediamtxPort: 8889, mediamtxHost: '' }; 
+        return { globalStorageMode: 'disabled', globalStoragePath: '', recordingQuality: 'main', mediamtxPort: 8889, mediamtxHost: '', showTopMonitor: false, netInterface: 'auto' }; 
     }
 }
 function getCameras() {
@@ -457,6 +459,8 @@ function syncMediaMtxConfig() {
             'apiAddress: :9997',
             `webrtcAddress: :${webrtcPort}`,
             'hlsAddress: :8880',
+            'rtspAddress: :8554',
+            'protocols: [tcp]',
             '',
             'paths:'
         ];
@@ -472,13 +476,13 @@ function syncMediaMtxConfig() {
 
             if (mainUrl) {
                 lines.push(`  ${safeId}:`);
-                lines.push(`    source: ${mainUrl}`);
+                lines.push(`    source: "${mainUrl}"`);
                 activeCount++;
             }
 
             if (subUrl && subUrl !== mainUrl) {
                 lines.push(`  ${safeId}_sub:`);
-                lines.push(`    source: ${subUrl}`);
+                lines.push(`    source: "${subUrl}"`);
                 activeCount++;
             }
         });
@@ -970,6 +974,8 @@ function sampleNetworkStats() {
             let candidateIf = null;
             let totalRx = 0;
             let totalTx = 0;
+            
+            const prefIf = settings.netInterface || 'auto';
 
             for (const line of lines) {
                 if (!line.includes(':')) continue;
@@ -977,15 +983,17 @@ function sampleNetworkStats() {
                 const ifName = rawIf.trim();
                 if (ifName === 'lo') continue;
 
+                if (prefIf !== 'auto' && ifName !== prefIf) continue;
+
                 const cols = rawData.trim().split(/\s+/);
                 const rx = parseInt(cols[0], 10) || 0;
                 const tx = parseInt(cols[8], 10) || 0;
 
-                if (!candidateIf || ifName.startsWith('eth') || ifName.startsWith('en') || ifName.startsWith('wlan')) {
+                if (!candidateIf || (prefIf === 'auto' && (ifName.startsWith('eth') || ifName.startsWith('en') || ifName.startsWith('wlan')))) {
                     candidateIf = ifName;
                     totalRx = rx;
                     totalTx = tx;
-                    if (ifName.startsWith('eth') || ifName.startsWith('end')) break;
+                    if (prefIf === 'auto' && (ifName.startsWith('eth') || ifName.startsWith('end'))) break;
                 }
             }
 

@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Archer_NVR - V8.2 Armbian System Monitor & Auto Storage</title>
+    <title>Archer_NVR - V8.3 Armbian System Monitor & Auto Storage</title>
     <meta name="description" content="NVR CCTV Backend with Node.js, Express, MediaMTX WebRTC live streaming, Armbian OS system monitor, and auto-detect USB/HDD storage for STB.">
-    <meta property="og:title" content="Archer_NVR - V8.2 Armbian System Monitor & Auto Storage">
+    <meta property="og:title" content="Archer_NVR - V8.3 Armbian System Monitor & Auto Storage">
     <meta property="og:description" content="NVR CCTV Backend with Node.js, Express, MediaMTX WebRTC live streaming, Armbian OS system monitor, and auto-detect USB/HDD storage for STB.">
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
@@ -16,9 +16,9 @@
         <div class="auth-card" id="authCard">
             <div class="brand" style="justify-content:center; border:none; padding-bottom:0.5rem;">
                 <span class="icon">🛡️</span>
-                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V8.2</span></h2>
+                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V8.3</span></h2>
             </div>
-            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v8.2 &bull; Armbian Hardware Monitor &bull; Auto-Detect Storage &bull; MediaMTX WebRTC</p>
+            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v8.3 &bull; Armbian Hardware Monitor &bull; Auto-Detect Storage &bull; MediaMTX WebRTC</p>
             <div class="auth-tabs" id="authTabs" style="display:none;">
                 <button type="button" class="auth-tab-btn" id="tabLoginBtn">Login</button>
                 <button type="button" class="auth-tab-btn" id="tabRegisterBtn">Daftar Akun Baru</button>
@@ -63,7 +63,7 @@
             <div class="brand">
                 <button id="btnToggleSidebar" class="btn-icon" title="Toggle Sidebar" style="margin-right:0.5rem; background:transparent; border:none; font-size:1.2rem; pointer-events:auto; display:none;">☰</button>
                 <span class="icon brand-text">🛡️</span>
-                <h2 class="brand-text">Archer_NVR <span class="badge">V8.2</span></h2>
+                <h2 class="brand-text">Archer_NVR <span class="badge">V8.3</span></h2>
             </div>
             
             <nav class="main-tabs">
@@ -71,6 +71,7 @@
                 <button class="tab-btn" data-target="view-playback" title="Rekaman"><span class="tab-icon">📼</span> <span class="tab-label">Rekaman</span></button>
                 <button class="tab-btn" data-target="view-storage" title="Storage"><span class="tab-icon">💾</span> <span class="tab-label">Storage</span></button>
                 <button class="tab-btn" data-target="view-logs" title="System Logs"><span class="tab-icon">📋</span> <span class="tab-label">Logs</span></button>
+                <button class="tab-btn" data-target="view-sysmonitor" title="System Monitor"><span class="tab-icon">🖥️</span> <span class="tab-label">Monitor</span></button>
             </nav>
 
             <div id="side-live" class="side-panel active">
@@ -129,26 +130,6 @@
             </div>
 
             <div style="margin-top: auto; padding: 1rem;">
-                <div class="sidebar-widget" id="sidebarSysWidget">
-                    <h4 style="margin-bottom: 0.5rem; color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">System Info</h4>
-                    <div class="widget-row">
-                        <span>CPU & Suhu</span>
-                        <span id="sideCpuTemp">--% | --°C</span>
-                    </div>
-                    <div class="widget-row">
-                        <span>RAM Terpakai</span>
-                        <span id="sideRam">--%</span>
-                    </div>
-                    <div class="widget-row">
-                        <span>Storage (<span id="sideStorageIf">-</span>)</span>
-                        <span id="sideStorage">--%</span>
-                    </div>
-                    <div class="widget-row" style="border-bottom:none;">
-                        <span>Network (<span id="sideNetIf">eth0</span>)</span>
-                        <span id="sideNetStatus" style="color: #4ade80;">OK</span>
-                    </div>
-                </div>
-
                 <button id="btnLogout" class="layout-btn" style="color:var(--accent); text-align:center; display:flex; justify-content:center; margin-top: 1rem;">
                     <span class="grid-icon">🚪</span> Logout
                 </button>
@@ -238,6 +219,35 @@
                         </div>
                         <button type="submit" class="btn btn-primary w-full mt-3">Simpan Preferensi Storage</button>
                     </form>
+                </div>
+            </div>
+
+            <!-- SYSTEM MONITOR VIEW -->
+            <div id="view-sysmonitor" class="view-pane">
+                <div class="content-wrapper" style="width:100%; height:100%; display:flex; flex-direction:column; padding: 1.5rem;">
+                    <h2 style="margin-bottom:1.5rem;">System Monitor (Armbian STB)</h2>
+                    
+                    <div class="monitor-dashboard" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+                        <div class="sidebar-widget" id="fullSysWidget" style="font-size: 1rem; padding: 1.5rem;">
+                            <h4 style="margin-bottom: 1rem; color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase;">Real-time Telemetry</h4>
+                            <div class="widget-row" style="padding: 0.75rem 0;">
+                                <span>CPU & Suhu SoC</span>
+                                <span id="sideCpuTemp">--% | --°C</span>
+                            </div>
+                            <div class="widget-row" style="padding: 0.75rem 0;">
+                                <span>RAM Terpakai</span>
+                                <span id="sideRam">--%</span>
+                            </div>
+                            <div class="widget-row" style="padding: 0.75rem 0;">
+                                <span>Media Simpan (<span id="sideStorageIf">-</span>)</span>
+                                <span id="sideStorage">--%</span>
+                            </div>
+                            <div class="widget-row" style="padding: 0.75rem 0; border-bottom:none;">
+                                <span>Network Aktif (<span id="sideNetIf">eth0</span>)</span>
+                                <span id="sideNetStatus" style="color: #4ade80;">OK</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -432,6 +442,22 @@
                             <label for="sysCustomStoragePath">Jalur Penyimpanan Aktif (RECORDING_PATH)</label>
                             <input type="text" id="sysCustomStoragePath" placeholder="Contoh: /media/usb0 atau /mnt/hdd">
                             <small class="form-help">Jalur absolut di sistem Linux tempat folder rekaman kamera akan disimpan dan dimonitor.</small>
+                        </div>
+
+                        <h3 style="border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-top: 1.5rem; margin-bottom: 1rem;">Opsi Antarmuka Monitoring</h3>
+                        
+                        <div class="form-group row-check">
+                            <input type="checkbox" id="sysShowTopMonitor">
+                            <label for="sysShowTopMonitor">Tampilkan Monitor Ringkas di Header Top-Bar</label>
+                            <small class="form-help" style="display:block; margin-left:1.5rem;">Mengaktifkan atau menyembunyikan status real-time CPU/RAM/Network di header.</small>
+                        </div>
+                        <div class="form-group" style="margin-left: 1.5rem;">
+                            <label for="sysNetInterface">Interface Jaringan Aktif (Speed Monitor)</label>
+                            <select id="sysNetInterface" class="form-control" style="max-width: 200px;">
+                                <option value="auto">Auto-Detect</option>
+                                <option value="eth0">LAN (eth0)</option>
+                                <option value="wlan0">WiFi (wlan0)</option>
+                            </select>
                         </div>
 
                         <h3 style="border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-top: 1.5rem; margin-bottom: 1rem;">Pengaturan Rekaman & Notifikasi</h3>
