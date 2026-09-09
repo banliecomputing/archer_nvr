@@ -3,22 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Archer_NVR - V8.4 Armbian System Monitor & Auto Storage</title>
+    <title>Archer_NVR - V8.5 Armbian System Monitor & Auto Storage</title>
     <meta name="description" content="NVR CCTV Backend with Node.js, Express, MediaMTX WebRTC live streaming, Armbian OS system monitor, and auto-detect USB/HDD storage for STB.">
-    <meta property="og:title" content="Archer_NVR - V8.4 Armbian System Monitor & Auto Storage">
+    <meta property="og:title" content="Archer_NVR - V8.5 Armbian System Monitor & Auto Storage">
     <meta property="og:description" content="NVR CCTV Backend with Node.js, Express, MediaMTX WebRTC live streaming, Armbian OS system monitor, and auto-detect USB/HDD storage for STB.">
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
 <body>
     <div id="authOverlay" class="auth-overlay">
         <div class="auth-card" id="authCard">
             <div class="brand" style="justify-content:center; border:none; padding-bottom:0.5rem;">
                 <span class="icon">🛡️</span>
-                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V8.4</span></h2>
+                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V8.5</span></h2>
             </div>
-            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v8.4 &bull; Armbian Hardware Monitor &bull; Auto-Detect Storage &bull; MediaMTX WebRTC</p>
+            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v8.5 &bull; Armbian Hardware Monitor &bull; Auto-Detect Storage &bull; MediaMTX WebRTC</p>
             <div class="auth-tabs" id="authTabs" style="display:none;">
                 <button type="button" class="auth-tab-btn" id="tabLoginBtn">Login</button>
                 <button type="button" class="auth-tab-btn" id="tabRegisterBtn">Daftar Akun Baru</button>
@@ -63,7 +64,7 @@
             <div class="brand">
                 <button id="btnToggleSidebar" class="btn-icon" title="Toggle Sidebar" style="margin-right:0.5rem; background:transparent; border:none; font-size:1.2rem; pointer-events:auto; display:none;">☰</button>
                 <span class="icon brand-text">🛡️</span>
-                <h2 class="brand-text">Archer_NVR <span class="badge">V8.4</span></h2>
+                <h2 class="brand-text">Archer_NVR <span class="badge">V8.5</span></h2>
             </div>
             
             <nav class="main-tabs">

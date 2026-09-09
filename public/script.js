@@ -405,8 +405,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function getMediaMtxStreamUrl(cam, streamType = 'main') {
-        const host = (mediamtxHost && mediamtxHost.trim()) ? mediamtxHost.trim() : (window.location.hostname || 'localhost');
-        const port = mediamtxPort || 8889;
         const safeId = (cam.id || '').replace(/[^a-zA-Z0-9_\-]/g, '_');
         
         let path = cam.mediaMtxPath || safeId;
@@ -417,7 +415,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 path = `${safeId}_sub`;
             }
         }
-        return `http://${host}:${port}/${path}`;
+        return `/stream/${path}/stream.m3u8`;
     }
 
     function cleanupCameraPlayer(camId) {
@@ -561,40 +559,71 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        setOverlayState('loading', 'Menghubungkan WebRTC MediaMTX...', iframeUrl);
+        setOverlayState('loading', 'Menghubungkan HLS Stream...', streamUrl);
 
-        // Langsung gunakan Iframe ke antarmuka WHEP MediaMTX
-        renderIframePlayer();
+        renderHlsPlayer();
 
-        function renderIframePlayer() {
+        function renderHlsPlayer() {
             wrapper.innerHTML = `
-                <iframe 
+                <video 
                     id="player-${camId}" 
-                    src="${iframeUrl}" 
-                    class="cam-player-frame" 
-                    allow="autoplay; fullscreen" 
-                    frameborder="0"
-                    loading="lazy">
-                </iframe>
+                    class="cam-player-video" 
+                    autoplay 
+                    muted 
+                    playsinline
+                    style="width: 100%; height: 100%; object-fit: cover; border: none;">
+                </video>
             `;
-            const iframe = wrapper.querySelector('iframe');
+            const video = wrapper.querySelector('video');
             
-            iframe.onload = () => {
-                setTimeout(() => {
+            if (Hls.isSupported()) {
+                const hls = new Hls({
+                    manifestLoadingTimeOut: 20000,
+                    manifestLoadingMaxRetry: 3,
+                    levelLoadingTimeOut: 20000,
+                    levelLoadingMaxRetry: 3
+                });
+                
+                hls.loadSource(streamUrl);
+                hls.attachMedia(video);
+                
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    video.play().catch(e => console.warn('Auto-play prevented', e));
                     setOverlayState('hidden');
-                }, 500);
-            };
-
-            iframe.onerror = () => {
-                setOverlayState('error', 'Gagal Memuat Player MediaMTX', `Periksa port 8889`);
-            };
-
-            // Watchdog fallback jika onload event terhambat oleh browser
-            setTimeout(() => {
-                if (stateOverlay && stateOverlay.style.display !== 'none') {
+                });
+                
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    if (data.fatal) {
+                        switch(data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                setOverlayState('error', 'Gagal Memuat HLS Stream', data.details);
+                                hls.destroy();
+                                break;
+                        }
+                    }
+                });
+                
+                // Save instance for cleanup
+                hlsInstances[camId] = hls;
+                
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = streamUrl;
+                video.addEventListener('loadedmetadata', function() {
+                    video.play().catch(e => console.warn('Auto-play prevented', e));
                     setOverlayState('hidden');
-                }
-            }, 3000); // 3 detik otomatis hapus loading spinner
+                });
+                video.addEventListener('error', function() {
+                    setOverlayState('error', 'Gagal Memuat Stream (Native)', 'Unsupported Format');
+                });
+            } else {
+                setOverlayState('error', 'Browser Tidak Mendukung HLS', 'Gunakan browser modern');
+            }
         }
     }
 

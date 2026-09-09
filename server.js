@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import cookieParser from 'cookie-parser';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
 dotenv.config();
 
@@ -20,6 +21,23 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_nvr_key_2026';
 
 app.use(express.json());
 app.use(cookieParser());
+
+// Proxy HLS streams from MediaMTX (Internal Port 8880) to allow remote access
+app.use('/stream', (req, res, next) => {
+    const token = req.cookies.nvr_auth_token || req.query.token;
+    if (!token) return res.status(401).send('Unauthorized');
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+        if (err) return res.status(401).send('Unauthorized');
+        next();
+    });
+}, createProxyMiddleware({
+    target: 'http://127.0.0.1:8880',
+    changeOrigin: true,
+    pathRewrite: {
+        '^/stream': '' // strip /stream so it goes to /cam1/
+    },
+    ws: true
+}));
 
 // Paths
 const publicDir = path.join(__dirname, 'public');
