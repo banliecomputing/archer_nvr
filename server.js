@@ -416,8 +416,18 @@ function probeCodec(url) {
 // Auto-Generate ~/mediamtx.yml dan restart MediaMTX via PM2
 function syncMediaMtxConfig() {
     try {
+        const currentSettings = getSettings();
+        const webrtcPort = (currentSettings && currentSettings.mediamtxPort) ? currentSettings.mediamtxPort : 8889;
         const cams = getCameras();
-        let lines = ['paths:'];
+        
+        let lines = [
+            'api: yes',
+            'apiAddress: :9997',
+            `webrtcAddress: :${webrtcPort}`,
+            'hlsAddress: :8880',
+            '',
+            'paths:'
+        ];
         let activeCount = 0;
 
         cams.forEach(cam => {
@@ -442,14 +452,14 @@ function syncMediaMtxConfig() {
         });
 
         if (activeCount === 0) {
-            lines.push('  # Belum ada kamera aktif terdaftar');
+            lines.push('  all_others:');
         }
 
         const yamlContent = lines.join('\n') + '\n';
 
         // Tulis konfigurasi utama ke ~/mediamtx.yml
         fs.writeFileSync(mediamtxConfigFile, yamlContent, 'utf8');
-        sysLog('INFO', `[MediaMTX] Konfigurasi berhasil disinkronkan ke ${mediamtxConfigFile} (${activeCount} stream aktif)`);
+        sysLog('INFO', `[MediaMTX] Konfigurasi berhasil disinkronkan ke ${mediamtxConfigFile} (${activeCount} stream aktif, WebRTC :${webrtcPort}, HLS :8880)`);
 
         // Tulis juga salinan di ./mediamtx.yml jika path berbeda
         const localConfig = path.join(__dirname, 'mediamtx.yml');

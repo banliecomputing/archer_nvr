@@ -16,9 +16,9 @@
         <div class="auth-card" id="authCard">
             <div class="brand" style="justify-content:center; border:none; padding-bottom:0.5rem;">
                 <span class="icon">🛡️</span>
-                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V8.0</span></h2>
+                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V8.1</span></h2>
             </div>
-            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v8.0 &bull; MediaMTX WebRTC Live View (&lt;0.5s) &bull; Copy-Only FFmpeg Recording</p>
+            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v8.1 &bull; MediaMTX WebRTC Live View (&lt;0.5s) &bull; Port Conflict Free (:8880 HLS / :8889 WebRTC)</p>
             <h3 id="authTitle" style="text-align:center; margin-bottom:1.5rem;">Memuat...</h3>
             
             <form id="authForm" style="display:none;">
@@ -58,7 +58,7 @@
             <div class="brand">
                 <button id="btnToggleSidebar" class="btn-icon" title="Toggle Sidebar" style="margin-right:0.5rem; background:transparent; border:none; font-size:1.2rem; pointer-events:auto; display:none;">☰</button>
                 <span class="icon brand-text">🛡️</span>
-                <h2 class="brand-text">Archer_NVR <span class="badge">V8.0</span></h2>
+                <h2 class="brand-text">Archer_NVR <span class="badge">V8.1</span></h2>
             </div>
             
             <nav class="main-tabs">
@@ -137,7 +137,7 @@
                     <button id="btnMobileMenu" class="btn-mobile-menu" aria-label="Toggle Menu">☰</button>
                     <div class="status-indicator">
                         <div class="dot pulse"></div>
-                        <span>SISTEM NVR V8.0 (MediaMTX WebRTC)</span>
+                        <span>SISTEM NVR V8.1 (MediaMTX WebRTC)</span>
                     </div>
                     <div class="top-actions">
                         <div class="clock" id="clock">00:00:00</div>
@@ -341,7 +341,7 @@
                 <div id="stab-system" class="stab-pane">
                     <form id="systemForm" style="margin-bottom: 2rem;">
                         <h3 style="border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-bottom: 1rem;">Engine Live View & MediaMTX</h3>
-                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">MediaMTX memproses live stream WebRTC tanpa beban CPU transcoding di Node.js (Ultra Low Latency &lt;0.5 detik).</p>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">MediaMTX memproses live stream WebRTC tanpa beban CPU transcoding di Node.js (Ultra Low Latency &lt;0.5 detik). Konfigurasi otomatis menetapkan HLS ke port <code>:8880</code> dan API ke <code>:9997</code> untuk menghindari konflik port 8888.</p>
 
                         <div class="form-row">
                             <div class="form-group flex-1">
