@@ -88,11 +88,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/auth/status');
             const data = await res.json();
             
+            const authTabs = document.getElementById('authTabs');
+            const tabLoginBtn = document.getElementById('tabLoginBtn');
+            const tabRegisterBtn = document.getElementById('tabRegisterBtn');
+            const confirmGroup = document.getElementById('authConfirmGroup');
+            
             if (data.needSetup) {
                 isSetupMode = true;
+                if (authTabs) authTabs.style.display = 'flex';
+                if (tabLoginBtn) tabLoginBtn.style.display = 'none'; // Only allow register
+                if (tabRegisterBtn) {
+                    tabRegisterBtn.classList.add('active');
+                    tabRegisterBtn.style.display = 'block';
+                }
+                
+                authTitle.style.display = 'block';
                 authTitle.textContent = 'Registrasi Admin Pertama';
                 authSubmitBtn.textContent = 'Buat Akun & Login';
-                const confirmGroup = document.getElementById('authConfirmGroup');
                 if (confirmGroup) confirmGroup.style.display = 'block';
                 authForm.style.display = 'block';
                 authOverlay.style.display = 'flex';
@@ -100,9 +112,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 initPasswordPeeks();
             } else if (!data.authenticated) {
                 isSetupMode = false;
+                if (authTabs) authTabs.style.display = 'flex';
+                if (tabRegisterBtn) tabRegisterBtn.style.display = 'none'; // Only allow login if already set up
+                if (tabLoginBtn) {
+                    tabLoginBtn.classList.add('active');
+                    tabLoginBtn.style.display = 'block';
+                }
+                
+                authTitle.style.display = 'block';
                 authTitle.textContent = 'Login NVR';
                 authSubmitBtn.textContent = 'Login';
-                const confirmGroup = document.getElementById('authConfirmGroup');
                 if (confirmGroup) confirmGroup.style.display = 'none';
                 authForm.style.display = 'block';
                 authOverlay.style.display = 'flex';
@@ -115,6 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 initializeApp();
             }
         } catch(e) {
+            authTitle.style.display = 'block';
             authTitle.textContent = 'Koneksi ke server gagal.';
         }
     }
@@ -511,6 +531,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const spinner = stateOverlay ? stateOverlay.querySelector('.state-spinner') : null;
 
         const streamUrl = getMediaMtxStreamUrl(cam, streamType);
+        const iframeUrl = streamUrl.endsWith('/') ? streamUrl : `${streamUrl}/`; // Trailing slash is safer for MediaMTX UI
 
         cleanupCameraPlayer(camId);
 
@@ -518,15 +539,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!stateOverlay) return;
             if (mode === 'hidden') {
                 stateOverlay.classList.add('hidden');
+                stateOverlay.style.display = 'none';
                 if (pulseDot) pulseDot.classList.remove('offline');
             } else if (mode === 'loading') {
                 stateOverlay.classList.remove('hidden');
+                stateOverlay.style.display = 'flex';
                 if (spinner) spinner.style.display = 'block';
                 if (btnRetry) btnRetry.style.display = 'none';
                 if (stateTitle) stateTitle.textContent = title || 'Menghubungkan MediaMTX...';
                 if (stateSubtitle && subtitle) stateSubtitle.textContent = subtitle;
             } else if (mode === 'error') {
                 stateOverlay.classList.remove('hidden');
+                stateOverlay.style.display = 'flex';
                 if (spinner) spinner.style.display = 'none';
                 if (btnRetry) btnRetry.style.display = 'inline-block';
                 if (stateTitle) stateTitle.textContent = title || 'Stream MediaMTX Tidak Tersedia';
@@ -535,78 +559,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
 
-        setOverlayState('loading', 'Menghubungkan WebRTC MediaMTX...', streamUrl);
+        setOverlayState('loading', 'Menghubungkan WebRTC MediaMTX...', iframeUrl);
 
-        if (playerMode === 'whep' && window.RTCPeerConnection) {
-            // WebRTC WHEP Native Player via HTML5 <video>
-            wrapper.innerHTML = `<video id="video-${camId}" autoplay muted playsinline class="cam-player-video"></video>`;
-            const videoEl = wrapper.querySelector('video');
-
-            try {
-                const whepUrl = `${streamUrl}/whep`;
-                const pc = new RTCPeerConnection({
-                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-                });
-                webrtcConnections[camId] = pc;
-
-                pc.addTransceiver('video', { direction: 'recvonly' });
-                pc.addTransceiver('audio', { direction: 'recvonly' });
-
-                pc.ontrack = (event) => {
-                    if (event.streams && event.streams[0]) {
-                        videoEl.srcObject = event.streams[0];
-                    } else {
-                        const stream = new MediaStream();
-                        stream.addTrack(event.track);
-                        videoEl.srcObject = stream;
-                    }
-                    videoEl.play().catch(e => console.warn('[WebRTC] Play:', e));
-                };
-
-                videoEl.onplaying = () => {
-                    setOverlayState('hidden');
-                };
-
-                pc.oniceconnectionstatechange = () => {
-                    if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-                        setOverlayState('error', 'Koneksi WebRTC Terputus', 'Menyambung ulang...');
-                    }
-                };
-
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-
-                const res = await fetch(whepUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/sdp' },
-                    body: pc.localDescription.sdp
-                });
-
-                if (!res.ok) throw new Error(`WHEP HTTP ${res.status}`);
-
-                const answerSdp = await res.text();
-                await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
-
-                setTimeout(() => {
-                    if (videoEl.readyState >= 2 || !videoEl.paused) {
-                        setOverlayState('hidden');
-                    }
-                }, 1200);
-
-            } catch (err) {
-                console.warn(`[WHEP Error] Beralih ke iframe MediaMTX untuk ${camId}:`, err);
-                renderIframePlayer();
-            }
-        } else {
-            // Mode Iframe MediaMTX Built-in WebRTC Player (http://[IP_STB]:8889/[camera_id])
-            renderIframePlayer();
-        }
+        // Langsung gunakan Iframe ke antarmuka WHEP MediaMTX
+        renderIframePlayer();
 
         function renderIframePlayer() {
             wrapper.innerHTML = `
                 <iframe 
                     id="player-${camId}" 
-                    src="${streamUrl}" 
+                    src="${iframeUrl}" 
                     class="cam-player-frame" 
                     allow="autoplay; fullscreen" 
                     frameborder="0"
@@ -618,19 +580,19 @@ document.addEventListener('DOMContentLoaded', () => {
             iframe.onload = () => {
                 setTimeout(() => {
                     setOverlayState('hidden');
-                }, 700);
+                }, 500);
             };
 
             iframe.onerror = () => {
-                setOverlayState('error', 'Gagal Memuat Player MediaMTX', `Periksa MediaMTX port ${mediamtxPort || 8889}`);
+                setOverlayState('error', 'Gagal Memuat Player MediaMTX', `Periksa port 8889`);
             };
 
             // Watchdog fallback jika onload event terhambat oleh browser
             setTimeout(() => {
-                if (stateOverlay && !stateOverlay.classList.contains('hidden')) {
+                if (stateOverlay && stateOverlay.style.display !== 'none') {
                     setOverlayState('hidden');
                 }
-            }, 2000);
+            }, 3000); // 3 detik otomatis hapus loading spinner
         }
     }
 
@@ -1018,61 +980,51 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!data) return;
 
             // 1. CPU Usage (%)
-            const cpuValEl = document.getElementById('monCpuVal');
-            const cpuBarEl = document.getElementById('monCpuBar');
-            if (cpuValEl && data.cpu) {
-                const cpuPct = data.cpu.usagePercent || 0;
-                cpuValEl.textContent = `${cpuPct}%`;
-                if (cpuBarEl) {
-                    cpuBarEl.style.width = `${Math.min(100, Math.max(0, cpuPct))}%`;
-                    cpuBarEl.style.backgroundColor = cpuPct > 80 ? '#ef4444' : (cpuPct > 50 ? '#f59e0b' : '#3b82f6');
-                }
+            const topCpuVal = document.getElementById('topCpuVal');
+            const sideCpuTemp = document.getElementById('sideCpuTemp');
+            let cpuPct = 0;
+            if (data.cpu) {
+                cpuPct = data.cpu.usagePercent || 0;
+                if (topCpuVal) topCpuVal.textContent = `${cpuPct}%`;
             }
 
             // 2. RAM Usage (%)
-            const ramValEl = document.getElementById('monRamVal');
-            const ramBarEl = document.getElementById('monRamBar');
-            if (ramValEl && data.ram) {
+            const topRamVal = document.getElementById('topRamVal');
+            const sideRam = document.getElementById('sideRam');
+            if (data.ram) {
                 const ramPct = (data.ram.usagePercent !== undefined ? data.ram.usagePercent : data.ram.usedPercent) || 0;
-                ramValEl.textContent = `${ramPct}%`;
-                if (ramBarEl) {
-                    ramBarEl.style.width = `${Math.min(100, Math.max(0, ramPct))}%`;
-                    ramBarEl.style.backgroundColor = ramPct > 85 ? '#ef4444' : (ramPct > 65 ? '#f59e0b' : '#3b82f6');
-                }
+                if (topRamVal) topRamVal.textContent = `${ramPct}%`;
+                if (sideRam) sideRam.textContent = `${ramPct}% (${data.ram.usedMB}MB / ${data.ram.totalMB}MB)`;
             }
 
-            // 3. Suhu STB (°C) dari /sys/class/thermal/thermal_zone0/temp
-            const tempValEl = document.getElementById('monTempVal');
-            if (tempValEl && data.temp) {
+            // 3. Suhu STB (°C)
+            if (data.temp && sideCpuTemp) {
                 const deg = data.temp.celsius || 0;
-                tempValEl.textContent = `${deg}°C`;
-                tempValEl.classList.remove('mon-temp-warm', 'mon-temp-hot');
-                if (data.temp.status === 'hot' || deg >= 75) {
-                    tempValEl.classList.add('mon-temp-hot');
-                } else if (data.temp.status === 'warm' || deg >= 65) {
-                    tempValEl.classList.add('mon-temp-warm');
-                }
+                sideCpuTemp.textContent = `${cpuPct}% | ${deg}°C`;
             }
 
-            // 4. Storage Utama / Media Simpan (% terpakai & sisa GB)
-            const diskValEl = document.getElementById('monDiskVal');
-            if (diskValEl && data.storage) {
+            // 4. Storage Utama
+            const sideStorageIf = document.getElementById('sideStorageIf');
+            const sideStorage = document.getElementById('sideStorage');
+            if (data.storage) {
                 const diskPct = data.storage.percentUsed || 0;
                 const freeGB = data.storage.freeGB || 0;
-                diskValEl.textContent = `${diskPct}% (${freeGB}GB sisa)`;
+                if (sideStorageIf) sideStorageIf.textContent = data.storage.path || 'Root';
+                if (sideStorage) sideStorage.textContent = `${diskPct}% (${freeGB}GB sisa)`;
             }
 
-            // 5. Interface Jaringan Aktif & Kecepatan Download/Upload
-            const netIfEl = document.getElementById('monNetIf');
-            const netValEl = document.getElementById('monNetVal');
+            // 5. Interface Jaringan & Kecepatan
+            const topNetVal = document.getElementById('topNetVal');
+            const sideNetIf = document.getElementById('sideNetIf');
+            const sideNetStatus = document.getElementById('sideNetStatus');
             if (data.network) {
                 const ifName = data.network.interface || data.network.iface || 'eth0';
                 const rxRate = data.network.rxSpeedFormatted || data.network.downSpeed || '0 KB/s';
                 const txRate = data.network.txSpeedFormatted || data.network.upSpeed || '0 KB/s';
-                if (netIfEl) netIfEl.textContent = `${ifName}:`;
-                if (netValEl) {
-                    netValEl.textContent = `↓ ${rxRate} ↑ ${txRate}`;
-                }
+                
+                if (topNetVal) topNetVal.textContent = `↓ ${rxRate} ↑ ${txRate}`;
+                if (sideNetIf) sideNetIf.textContent = ifName;
+                if (sideNetStatus) sideNetStatus.textContent = `↓ ${rxRate} | ↑ ${txRate}`;
             }
         } catch(err) {
             // Polling gagal secara anggun tanpa mengganggu UI
