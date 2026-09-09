@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Archer_NVR</title>
-    <meta name="description" content="NVR CCTV Backend with Node.js, Express, MediaMTX WebRTC WHEP live streaming and FFmpeg recording for Armbian STB.">
-    <meta property="og:title" content="Archer_NVR">
-    <meta property="og:description" content="NVR CCTV Backend with Node.js, Express, MediaMTX WebRTC WHEP live streaming and FFmpeg recording for Armbian STB.">
+    <title>Archer_NVR - V8.2 Armbian System Monitor & Auto Storage</title>
+    <meta name="description" content="NVR CCTV Backend with Node.js, Express, MediaMTX WebRTC live streaming, Armbian OS system monitor, and auto-detect USB/HDD storage for STB.">
+    <meta property="og:title" content="Archer_NVR - V8.2 Armbian System Monitor & Auto Storage">
+    <meta property="og:description" content="NVR CCTV Backend with Node.js, Express, MediaMTX WebRTC live streaming, Armbian OS system monitor, and auto-detect USB/HDD storage for STB.">
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
@@ -16,9 +16,9 @@
         <div class="auth-card" id="authCard">
             <div class="brand" style="justify-content:center; border:none; padding-bottom:0.5rem;">
                 <span class="icon">🛡️</span>
-                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V8.1</span></h2>
+                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V8.2</span></h2>
             </div>
-            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v8.1 &bull; MediaMTX WebRTC Live View (&lt;0.5s) &bull; Port Conflict Free (:8880 HLS / :8889 WebRTC)</p>
+            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v8.2 &bull; Armbian Hardware Monitor &bull; Auto-Detect Storage &bull; MediaMTX WebRTC</p>
             <h3 id="authTitle" style="text-align:center; margin-bottom:1.5rem;">Memuat...</h3>
             
             <form id="authForm" style="display:none;">
@@ -58,7 +58,7 @@
             <div class="brand">
                 <button id="btnToggleSidebar" class="btn-icon" title="Toggle Sidebar" style="margin-right:0.5rem; background:transparent; border:none; font-size:1.2rem; pointer-events:auto; display:none;">☰</button>
                 <span class="icon brand-text">🛡️</span>
-                <h2 class="brand-text">Archer_NVR <span class="badge">V8.1</span></h2>
+                <h2 class="brand-text">Archer_NVR <span class="badge">V8.2</span></h2>
             </div>
             
             <nav class="main-tabs">
@@ -135,10 +135,42 @@
             <header class="topbar">
                 <div class="top-status">
                     <button id="btnMobileMenu" class="btn-mobile-menu" aria-label="Toggle Menu">☰</button>
-                    <div class="status-indicator">
-                        <div class="dot pulse"></div>
-                        <span>SISTEM NVR V8.1 (MediaMTX WebRTC)</span>
+                    
+                    <!-- Armbian Real-time System Monitoring Bar -->
+                    <div class="sys-monitor-bar" id="sysMonitorBar" title="Monitoring Real-time Sistem Armbian STB">
+                        <div class="mon-item mon-cpu" title="Armbian CPU Usage">
+                            <span class="mon-icon">⚡</span>
+                            <span class="mon-label">CPU</span>
+                            <span class="mon-val" id="monCpuVal">--%</span>
+                            <div class="mon-bar"><div class="mon-bar-fill" id="monCpuBar"></div></div>
+                        </div>
+
+                        <div class="mon-item mon-ram" title="Armbian RAM Memory Usage">
+                            <span class="mon-icon">🧠</span>
+                            <span class="mon-label">RAM</span>
+                            <span class="mon-val" id="monRamVal">--%</span>
+                            <div class="mon-bar"><div class="mon-bar-fill" id="monRamBar"></div></div>
+                        </div>
+
+                        <div class="mon-item mon-temp" title="Suhu SoC STB (/sys/class/thermal/thermal_zone0/temp)">
+                            <span class="mon-icon">🌡️</span>
+                            <span class="mon-label">Suhu</span>
+                            <span class="mon-val" id="monTempVal">--°C</span>
+                        </div>
+
+                        <div class="mon-item mon-disk" title="Media Penyimpanan Rekaman Utama">
+                            <span class="mon-icon">💾</span>
+                            <span class="mon-label">Storage</span>
+                            <span class="mon-val" id="monDiskVal">--%</span>
+                        </div>
+
+                        <div class="mon-item mon-net" title="Interface & Kecepatan Jaringan Real-time">
+                            <span class="mon-icon">🌐</span>
+                            <span class="mon-label" id="monNetIf">eth0</span>
+                            <span class="mon-val mon-net-speed" id="monNetVal">↓ 0 KB/s ↑ 0 KB/s</span>
+                        </div>
                     </div>
+
                     <div class="top-actions">
                         <div class="clock" id="clock">00:00:00</div>
                         <button id="btnSettings" class="btn-settings" title="Pengaturan Sistem">
@@ -363,6 +395,44 @@
                                 <option value="whep">WebRTC WHEP Native (HTML5 Video Element)</option>
                             </select>
                             <small class="form-help">Format URL Pemutar: http://[IP_STB]:8889/[camera_id]</small>
+                        </div>
+
+                        <!-- Auto-Detect & Konfigurasi Media Penyimpanan Rekaman (USB/HDD) -->
+                        <h3 style="border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-top: 1.5rem; margin-bottom: 1rem;">Media Penyimpanan Rekaman (Auto-Detect USB / HDD)</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+                            Sistem secara otomatis memindai mount point penyimpanan Armbian (Internal SD Card, USB Drive, atau Harddisk Eksternal di <code>/media</code> dan <code>/mnt</code>). Lokasi terpilih akan digunakan sebagai jalur default rekaman video FFmpeg (<code>RECORDING_PATH</code>) dan disimpan ke <code>data/nvr_db.json</code>.
+                        </p>
+
+                        <div class="form-group">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+                                <label for="sysStorageDevice" style="margin:0;">Pilih Lokasi Drive Penyimpanan (USB / HDD / SD Card)</label>
+                                <button type="button" id="btnRefreshStorage" class="btn-sm btn-secondary" style="font-size:0.75rem; padding:0.25rem 0.6rem; cursor:pointer;" title="Pindai ulang perangkat penyimpanan eksternal">
+                                    🔄 Pindai Ulang Drive
+                                </button>
+                            </div>
+                            <select id="sysStorageDevice" class="form-control">
+                                <option value="">Memindai media penyimpanan...</option>
+                            </select>
+                        </div>
+
+                        <div id="storageDevicePreview" class="storage-info-box" style="margin-top:0.6rem; margin-bottom:0.8rem; display:none;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:0.35rem;">
+                                <span id="stPreviewName" style="font-weight:600; color:#f8fafc;">Drive: -</span>
+                                <span id="stPreviewMount" style="font-family:monospace; color:#60a5fa;">-</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:var(--text-muted);">
+                                <span id="stPreviewCapacity">Kapasitas: -</span>
+                                <span id="stPreviewFree" style="color:#4ade80; font-weight:600;">Sisa: -</span>
+                            </div>
+                            <div style="margin-top:0.5rem; height:6px; background:#1e293b; border-radius:3px; overflow:hidden;">
+                                <div id="stPreviewFill" style="height:100%; width:0%; background:#3b82f6; transition:width 0.3s;"></div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 0.8rem;">
+                            <label for="sysCustomStoragePath">Jalur Penyimpanan Aktif (RECORDING_PATH)</label>
+                            <input type="text" id="sysCustomStoragePath" placeholder="Contoh: /media/usb0 atau /mnt/hdd">
+                            <small class="form-help">Jalur absolut di sistem Linux tempat folder rekaman kamera akan disimpan dan dimonitor.</small>
                         </div>
 
                         <h3 style="border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-top: 1.5rem; margin-bottom: 1rem;">Pengaturan Rekaman & Notifikasi</h3>

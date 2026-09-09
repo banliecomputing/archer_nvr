@@ -1,5 +1,5 @@
 import express from 'express';
-import { spawn, exec } from 'child_process';
+import { spawn, exec, execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -27,7 +27,7 @@ const streamBaseDir = path.join(publicDir, 'streams');
 const dbFile = path.join(__dirname, 'cameras.json');
 const settingsFile = path.join(__dirname, 'settings.json');
 const dataDir = path.join(__dirname, 'data');
-const nvrDbFile = path.join(dataDir, 'nvr.db.json');
+const nvrDbFile = path.join(dataDir, 'nvr_db.json');
 const baseStoragePath = process.env.STORAGE_PATH || path.join(__dirname, 'public', 'recordings');
 
 // MediaMTX Paths (~/mediamtx.yml)
@@ -43,11 +43,38 @@ if (!fs.existsSync(dbFile)) fs.writeFileSync(dbFile, JSON.stringify([]));
 if (!fs.existsSync(settingsFile)) fs.writeFileSync(settingsFile, JSON.stringify({ telegramBotToken: "", telegramChatId: "" }));
 
 function getNvrDb() {
-    try { return JSON.parse(fs.readFileSync(nvrDbFile, 'utf8')); }
-    catch (e) { return { recordings: [], system_logs: [], users: [] }; }
+    try {
+        if (fs.existsSync(nvrDbFile)) {
+            const data = JSON.parse(fs.readFileSync(nvrDbFile, 'utf8'));
+            if (!data.recordings) data.recordings = [];
+            if (!data.system_logs) data.system_logs = [];
+            if (!data.users) data.users = [];
+            if (data.recording_path === undefined) data.recording_path = '';
+            return data;
+        }
+        const legacyFile = path.join(dataDir, 'nvr.db.json');
+        if (fs.existsSync(legacyFile)) {
+            const data = JSON.parse(fs.readFileSync(legacyFile, 'utf8'));
+            if (!data.recordings) data.recordings = [];
+            if (!data.system_logs) data.system_logs = [];
+            if (!data.users) data.users = [];
+            if (data.recording_path === undefined) data.recording_path = '';
+            fs.writeFileSync(nvrDbFile, JSON.stringify(data, null, 2));
+            return data;
+        }
+        return { recordings: [], system_logs: [], users: [], recording_path: '' };
+    }
+    catch (e) {
+        return { recordings: [], system_logs: [], users: [], recording_path: '' };
+    }
 }
+
 function saveNvrDb(data) {
-    fs.writeFileSync(nvrDbFile, JSON.stringify(data, null, 2));
+    try {
+        fs.writeFileSync(nvrDbFile, JSON.stringify(data, null, 2));
+        // Sinkronkan juga ke nvr.db.json untuk kompatibilitas
+        fs.writeFileSync(path.join(dataDir, 'nvr.db.json'), JSON.stringify(data, null, 2));
+    } catch(e) {}
 }
 
 // Logger
@@ -98,6 +125,10 @@ function resolveStoragePath(camPath) {
 }
 
 function getActualBaseStoragePath() {
+    const dbData = getNvrDb();
+    if (dbData && dbData.recording_path && dbData.recording_path.trim() !== '') {
+        return dbData.recording_path;
+    }
     if (settings.globalStoragePath && settings.globalStoragePath.trim() !== '') {
         return settings.globalStoragePath;
     }
@@ -107,16 +138,17 @@ function getActualBaseStoragePath() {
 // Database Initialization
 function initDB() {
     if (!fs.existsSync(nvrDbFile)) {
-        saveNvrDb({ recordings: [], system_logs: [], users: [] });
+        saveNvrDb({ recordings: [], system_logs: [], users: [], recording_path: '' });
     } else {
-        // Ensure users array exists
         const data = getNvrDb();
-        if (!data.users) {
-            data.users = [];
-            saveNvrDb(data);
-        }
+        let changed = false;
+        if (!data.users) { data.users = []; changed = true; }
+        if (!data.recordings) { data.recordings = []; changed = true; }
+        if (!data.system_logs) { data.system_logs = []; changed = true; }
+        if (data.recording_path === undefined) { data.recording_path = ''; changed = true; }
+        if (changed) saveNvrDb(data);
     }
-    sysLog('INFO', 'JSON Local Database Initialized');
+    sysLog('INFO', 'JSON Local Database Initialized (data/nvr_db.json)');
 }
 
 // Auth Middleware
@@ -891,39 +923,495 @@ app.get('/api/recordings', verifyToken, (req, res) => {
     }
 });
 
-app.get('/api/storage-options', verifyToken, (req, res) => {
-    const options = [];
-    options.push({ id: 'disabled', label: 'Nonaktifkan Rekaman (Live View Only) [DEFAULT]', path: '' });
-    options.push({ id: 'internal', label: 'SD Card / Internal STB (Tidak Direkomendasikan)', path: path.join(__dirname, 'public', 'recordings') });
+// --- Armbian System Monitoring & Auto-Detect Storage Engine ---
+let cachedCpuUsage = 0;
+let lastCpuTicks = null;
 
-    const scanDirs = ['/mnt', '/media'];
-    scanDirs.forEach(baseDir => {
-        if (fs.existsSync(baseDir)) {
+function sampleCpuUsage() {
+    try {
+        const cpus = os.cpus();
+        if (!cpus || cpus.length === 0) return;
+        let idle = 0;
+        let total = 0;
+        for (const cpu of cpus) {
+            for (const type in cpu.times) {
+                total += cpu.times[type];
+            }
+            idle += cpu.times.idle;
+        }
+
+        if (lastCpuTicks) {
+            const idleDelta = idle - lastCpuTicks.idle;
+            const totalDelta = total - lastCpuTicks.total;
+            if (totalDelta > 0) {
+                cachedCpuUsage = Math.max(0, Math.min(100, Math.round((1 - (idleDelta / totalDelta)) * 100)));
+            }
+        }
+        lastCpuTicks = { idle, total };
+    } catch(e) {}
+}
+setInterval(sampleCpuUsage, 2500);
+sampleCpuUsage();
+
+let cachedNetStats = {
+    interface: 'eth0',
+    rxSpeedFormatted: '0 KB/s',
+    txSpeedFormatted: '0 KB/s',
+    rxSpeedBytes: 0,
+    txSpeedBytes: 0
+};
+let lastNetSample = null;
+
+function sampleNetworkStats() {
+    try {
+        if (fs.existsSync('/proc/net/dev')) {
+            const content = fs.readFileSync('/proc/net/dev', 'utf8');
+            const lines = content.split('\n');
+            let candidateIf = null;
+            let totalRx = 0;
+            let totalTx = 0;
+
+            for (const line of lines) {
+                if (!line.includes(':')) continue;
+                const [rawIf, rawData] = line.split(':');
+                const ifName = rawIf.trim();
+                if (ifName === 'lo') continue;
+
+                const cols = rawData.trim().split(/\s+/);
+                const rx = parseInt(cols[0], 10) || 0;
+                const tx = parseInt(cols[8], 10) || 0;
+
+                if (!candidateIf || ifName.startsWith('eth') || ifName.startsWith('en') || ifName.startsWith('wlan')) {
+                    candidateIf = ifName;
+                    totalRx = rx;
+                    totalTx = tx;
+                    if (ifName.startsWith('eth') || ifName.startsWith('end')) break;
+                }
+            }
+
+            const now = Date.now();
+            if (candidateIf && lastNetSample && lastNetSample.interface === candidateIf) {
+                const dt = (now - lastNetSample.time) / 1000;
+                if (dt > 0) {
+                    const rxRate = Math.max(0, (totalRx - lastNetSample.rx) / dt);
+                    const txRate = Math.max(0, (totalTx - lastNetSample.tx) / dt);
+                    cachedNetStats = {
+                        interface: candidateIf,
+                        rxSpeedFormatted: formatDataRate(rxRate),
+                        txSpeedFormatted: formatDataRate(txRate),
+                        rxSpeedBytes: Math.round(rxRate),
+                        txSpeedBytes: Math.round(txRate)
+                    };
+                }
+            }
+            if (candidateIf) {
+                lastNetSample = { interface: candidateIf, rx: totalRx, tx: totalTx, time: now };
+            }
+        } else {
+            const ifaces = os.networkInterfaces();
+            let activeIf = 'eth0';
+            for (const name of Object.keys(ifaces)) {
+                if (name !== 'lo' && !name.startsWith('127.')) {
+                    activeIf = name;
+                    break;
+                }
+            }
+            cachedNetStats.interface = activeIf;
+        }
+    } catch(e) {}
+}
+setInterval(sampleNetworkStats, 2500);
+sampleNetworkStats();
+
+function formatDataRate(bytesPerSec) {
+    if (bytesPerSec >= 1024 * 1024) {
+        return (bytesPerSec / (1024 * 1024)).toFixed(1) + ' MB/s';
+    }
+    if (bytesPerSec >= 1024) {
+        return (bytesPerSec / 1024).toFixed(0) + ' KB/s';
+    }
+    return Math.round(bytesPerSec) + ' B/s';
+}
+
+function getStbThermalCelsius() {
+    const thermalPaths = [
+        '/sys/class/thermal/thermal_zone0/temp',
+        '/sys/class/thermal/thermal_zone1/temp',
+        '/sys/devices/virtual/thermal/thermal_zone0/temp'
+    ];
+    for (const p of thermalPaths) {
+        if (fs.existsSync(p)) {
             try {
-                const drives = fs.readdirSync(baseDir);
-                drives.forEach(drive => {
-                    const drivePath = path.join(baseDir, drive);
-                    if (fs.lstatSync(drivePath).isDirectory()) {
-                        let freeGB = 'Unknown';
-                        try {
-                            const stats = fs.statfsSync(drivePath);
-                            freeGB = (stats.bfree * stats.bsize / (1024**3)).toFixed(1);
-                        } catch(e) {}
-                        options.push({
-                            id: `ext_${drive}`,
-                            label: `USB Drive: ${drive} (${freeGB} GB Free)`,
-                            path: drivePath
-                        });
-                    }
-                });
+                const raw = fs.readFileSync(p, 'utf8').trim();
+                const val = parseFloat(raw);
+                if (!isNaN(val)) {
+                    // Sensor Linux biasanya mengembalikan nilai dalam ribuan (millidegrees)
+                    return val > 200 ? Math.round(val / 1000) : Math.round(val);
+                }
             } catch(e) {}
         }
+    }
+    return 48; // Nilai default wajar jika sensor tidak dapat diakses di container sandbox
+}
+
+function getSystemRamStats() {
+    const totalBytes = os.totalmem();
+    let freeBytes = os.freemem();
+    let usedBytes = totalBytes - freeBytes;
+
+    try {
+        if (fs.existsSync('/proc/meminfo')) {
+            const memStr = fs.readFileSync('/proc/meminfo', 'utf8');
+            const totalMatch = memStr.match(/MemTotal:\s+(\d+)\s+kB/);
+            const availMatch = memStr.match(/MemAvailable:\s+(\d+)\s+kB/);
+            if (totalMatch && availMatch) {
+                const tot = parseInt(totalMatch[1], 10) * 1024;
+                const av = parseInt(availMatch[1], 10) * 1024;
+                usedBytes = tot - av;
+                freeBytes = av;
+            }
+        }
+    } catch(e) {}
+
+    const totalMB = Math.round(totalBytes / (1024 * 1024));
+    const usedMB = Math.round(usedBytes / (1024 * 1024));
+    const freeMB = Math.round(freeBytes / (1024 * 1024));
+    const usagePercent = totalBytes > 0 ? Math.max(0, Math.min(100, Math.round((usedBytes / totalBytes) * 100))) : 0;
+
+    return { usagePercent, usedMB, totalMB, freeMB };
+}
+
+function getStorageUsageStats() {
+    const recPath = getActualBaseStoragePath();
+    const targetDir = fs.existsSync(recPath) ? recPath : '/';
+    let res = {
+        path: recPath,
+        totalGB: 0,
+        freeGB: 0,
+        usedGB: 0,
+        percentUsed: 0
+    };
+    try {
+        if (fs.statfsSync) {
+            const s = fs.statfsSync(targetDir);
+            const total = s.blocks * s.bsize;
+            const free = s.bfree * s.bsize;
+            const used = total - free;
+            res.totalGB = parseFloat((total / (1024 ** 3)).toFixed(1));
+            res.freeGB = parseFloat((free / (1024 ** 3)).toFixed(1));
+            res.usedGB = parseFloat((used / (1024 ** 3)).toFixed(1));
+            res.percentUsed = total > 0 ? Math.max(0, Math.min(100, Math.round((used / total) * 100))) : 0;
+        }
+    } catch(e) {}
+    return res;
+}
+
+function getFormattedUptime() {
+    const s = Math.floor(os.uptime());
+    const d = Math.floor(s / 86400);
+    const h = Math.floor((s % 86400) / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (d > 0) return `${d}d ${h}h ${m}m`;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+}
+
+function detectStorageDevices() {
+    const devices = [];
+    const seenMounts = new Set();
+    const curPath = getActualBaseStoragePath();
+
+    // 1. Root / Internal SD Card (eMMC)
+    try {
+        const rootPath = '/';
+        const s = fs.statfsSync(rootPath);
+        const totalGB = parseFloat((s.blocks * s.bsize / (1024**3)).toFixed(1));
+        const freeGB = parseFloat((s.bfree * s.bsize / (1024**3)).toFixed(1));
+        const usedGB = parseFloat(((s.blocks - s.bfree) * s.bsize / (1024**3)).toFixed(1));
+        const percentUsed = totalGB > 0 ? Math.round((usedGB / totalGB) * 100) : 0;
+
+        devices.push({
+            id: 'internal_root',
+            name: 'Internal Storage / SD Card (Root /)',
+            category: 'Internal',
+            mountPath: '/',
+            totalGB,
+            freeGB,
+            usedGB,
+            percentUsed,
+            selected: curPath === '/'
+        });
+        seenMounts.add('/');
+    } catch(e) {}
+
+    // 2. Folder default recordings bawaan NVR
+    const defaultNvrRec = path.join(__dirname, 'public', 'recordings');
+    if (!seenMounts.has(defaultNvrRec)) {
+        try {
+            if (!fs.existsSync(defaultNvrRec)) fs.mkdirSync(defaultNvrRec, { recursive: true });
+            const s = fs.statfsSync(defaultNvrRec);
+            const totalGB = parseFloat((s.blocks * s.bsize / (1024**3)).toFixed(1));
+            const freeGB = parseFloat((s.bfree * s.bsize / (1024**3)).toFixed(1));
+            const usedGB = parseFloat(((s.blocks - s.bfree) * s.bsize / (1024**3)).toFixed(1));
+            const percentUsed = totalGB > 0 ? Math.round((usedGB / totalGB) * 100) : 0;
+
+            devices.push({
+                id: 'nvr_default_folder',
+                name: 'Penyimpanan Default NVR (public/recordings)',
+                category: 'Internal',
+                mountPath: defaultNvrRec,
+                totalGB,
+                freeGB,
+                usedGB,
+                percentUsed,
+                selected: curPath === defaultNvrRec
+            });
+            seenMounts.add(defaultNvrRec);
+        } catch(e) {}
+    }
+
+    // 3. Scan mount points dengan 'df -kP'
+    try {
+        const dfOutput = execSync('df -kP', { timeout: 3000, encoding: 'utf8' });
+        const lines = dfOutput.trim().split('\n').slice(1);
+        for (const line of lines) {
+            const cols = line.trim().split(/\s+/);
+            if (cols.length >= 6) {
+                const fsSource = cols[0];
+                const totalKb = parseInt(cols[1], 10);
+                const usedKb = parseInt(cols[2], 10);
+                const freeKb = parseInt(cols[3], 10);
+                const mount = cols[5];
+
+                if (!seenMounts.has(mount) && (mount.startsWith('/media') || mount.startsWith('/mnt') || fsSource.startsWith('/dev/sd') || fsSource.startsWith('/dev/nvme') || fsSource.startsWith('/dev/mmcblk1'))) {
+                    const totalGB = parseFloat((totalKb / (1024 * 1024)).toFixed(1));
+                    const freeGB = parseFloat((freeKb / (1024 * 1024)).toFixed(1));
+                    const usedGB = parseFloat((usedKb / (1024 * 1024)).toFixed(1));
+                    const percentUsed = totalKb > 0 ? Math.round((usedKb / totalKb) * 100) : 0;
+
+                    let typeName = 'USB Drive';
+                    if (totalGB > 300 || fsSource.includes('hdd') || mount.includes('hdd')) {
+                        typeName = 'Harddisk Eksternal';
+                    }
+
+                    devices.push({
+                        id: `df_${mount.replace(/[^a-zA-Z0-9]/g, '_')}`,
+                        name: `${typeName}: ${path.basename(mount) || fsSource} (${mount})`,
+                        category: 'External',
+                        filesystem: fsSource,
+                        mountPath: mount,
+                        totalGB,
+                        freeGB,
+                        usedGB,
+                        percentUsed,
+                        selected: curPath === mount
+                    });
+                    seenMounts.add(mount);
+                }
+            }
+        }
+    } catch(e) {}
+
+    // 4. Scan folder /media dan /mnt secara langsung
+    const scanFolders = ['/media', '/mnt'];
+    for (const base of scanFolders) {
+        if (fs.existsSync(base)) {
+            try {
+                const subs = fs.readdirSync(base);
+                for (const sub of subs) {
+                    const subPath = path.join(base, sub);
+                    try {
+                        const st = fs.lstatSync(subPath);
+                        if (st.isDirectory()) {
+                            // Cek apakah ada sub-folder pengguna (misal /media/armbian/USB_NAME)
+                            let subTargets = [subPath];
+                            try {
+                                const nested = fs.readdirSync(subPath);
+                                for (const n of nested) {
+                                    const nestedPath = path.join(subPath, n);
+                                    if (fs.lstatSync(nestedPath).isDirectory()) {
+                                        subTargets.push(nestedPath);
+                                    }
+                                }
+                            } catch(e) {}
+
+                            for (const target of subTargets) {
+                                if (seenMounts.has(target)) continue;
+                                try {
+                                    const s = fs.statfsSync(target);
+                                    const totalGB = parseFloat((s.blocks * s.bsize / (1024**3)).toFixed(1));
+                                    const freeGB = parseFloat((s.bfree * s.bsize / (1024**3)).toFixed(1));
+                                    const usedGB = parseFloat(((s.blocks - s.bfree) * s.bsize / (1024**3)).toFixed(1));
+                                    const percentUsed = totalGB > 0 ? Math.round((usedGB / totalGB) * 100) : 0;
+
+                                    let typeName = totalGB > 300 ? 'Harddisk Eksternal' : 'USB Drive';
+
+                                    devices.push({
+                                        id: `scan_${target.replace(/[^a-zA-Z0-9]/g, '_')}`,
+                                        name: `${typeName}: ${path.basename(target)} (${target})`,
+                                        category: 'External',
+                                        mountPath: target,
+                                        totalGB,
+                                        freeGB,
+                                        usedGB,
+                                        percentUsed,
+                                        selected: curPath === target
+                                    });
+                                    seenMounts.add(target);
+                                } catch(e) {}
+                            }
+                        }
+                    } catch(e) {}
+                }
+            } catch(e) {}
+        }
+    }
+
+    // Jika curPath adalah kustom dan belum ada di list
+    if (curPath && !seenMounts.has(curPath)) {
+        try {
+            let totalGB = 0, freeGB = 0, usedGB = 0, percentUsed = 0;
+            if (fs.existsSync(curPath)) {
+                const s = fs.statfsSync(curPath);
+                totalGB = parseFloat((s.blocks * s.bsize / (1024**3)).toFixed(1));
+                freeGB = parseFloat((s.bfree * s.bsize / (1024**3)).toFixed(1));
+                usedGB = parseFloat(((s.blocks - s.bfree) * s.bsize / (1024**3)).toFixed(1));
+                percentUsed = totalGB > 0 ? Math.round((usedGB / totalGB) * 100) : 0;
+            }
+            devices.push({
+                id: 'custom_current',
+                name: `Jalur Kustom Terpilih (${curPath})`,
+                category: 'Custom',
+                mountPath: curPath,
+                totalGB,
+                freeGB,
+                usedGB,
+                percentUsed,
+                selected: true
+            });
+        } catch(e) {}
+    }
+
+    return devices;
+}
+
+// System Stats Endpoint (Real-time Armbian Hardware & OS Monitor)
+app.get('/api/system/stats', (req, res) => {
+    try {
+        const tempVal = getStbThermalCelsius();
+        let tempStatus = 'normal';
+        if (tempVal >= 75) tempStatus = 'hot';
+        else if (tempVal >= 65) tempStatus = 'warm';
+
+        res.json({
+            cpu: {
+                usagePercent: cachedCpuUsage,
+                cores: os.cpus().length,
+                model: os.cpus()[0]?.model || 'ARM Cortex STB'
+            },
+            ram: getSystemRamStats(),
+            temp: {
+                celsius: tempVal,
+                status: tempStatus
+            },
+            storage: getStorageUsageStats(),
+            network: cachedNetStats,
+            uptime: getFormattedUptime(),
+            hostname: os.hostname(),
+            platform: 'Armbian Linux'
+        });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Auto-Detect Storage Devices Endpoint
+app.get('/api/system/storage-devices', (req, res) => {
+    try {
+        const devices = detectStorageDevices();
+        const currentPath = getActualBaseStoragePath();
+        res.json({
+            devices,
+            currentStoragePath: currentPath
+        });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Select Default Storage Device Endpoint (Saves RECORDING_PATH to data/nvr_db.json)
+app.post('/api/system/storage-devices/select', verifyToken, (req, res) => {
+    try {
+        const { storagePath } = req.body;
+        if (!storagePath || typeof storagePath !== 'string') {
+            return res.status(400).json({ error: 'Jalur penyimpanan (storagePath) diperlukan' });
+        }
+
+        const trimmedPath = storagePath.trim();
+        if (!trimmedPath) {
+            return res.status(400).json({ error: 'Jalur penyimpanan tidak boleh kosong' });
+        }
+
+        // Pastikan direktori ada atau dapat dibuat
+        try {
+            if (!fs.existsSync(trimmedPath)) {
+                fs.mkdirSync(trimmedPath, { recursive: true });
+            }
+        } catch(err) {
+            return res.status(400).json({ error: `Gagal mengakses direktori penyimpanan: ${err.message}` });
+        }
+
+        const prevPath = getActualBaseStoragePath();
+
+        // 1. Simpan ke data/nvr_db.json
+        const dbData = getNvrDb();
+        dbData.recording_path = trimmedPath;
+        saveNvrDb(dbData);
+
+        // 2. Sinkronkan juga ke settings.json
+        settings.globalStoragePath = trimmedPath;
+        settings.globalStorageMode = 'custom';
+        fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+
+        sysLog('INFO', `Lokasi Penyimpanan Rekaman Diperbarui: ${trimmedPath} (Tersimpan di data/nvr_db.json)`);
+
+        // 3. Restart stream recording jika path berubah
+        if (prevPath !== trimmedPath) {
+            ensureRecordFolders();
+            startAllStreams();
+            syncRecordingsToDB();
+        }
+
+        res.json({
+            success: true,
+            recording_path: trimmedPath,
+            message: 'Lokasi penyimpanan berhasil diperbarui dan disimpan ke data/nvr_db.json'
+        });
+    } catch(e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/storage-options', verifyToken, (req, res) => {
+    const devices = detectStorageDevices();
+    const options = [];
+    options.push({ id: 'disabled', label: 'Nonaktifkan Rekaman (Live View Only) [DEFAULT]', path: '' });
+    
+    devices.forEach(dev => {
+        options.push({
+            id: dev.id,
+            label: `${dev.name} (${dev.freeGB} GB Free / Total ${dev.totalGB} GB)`,
+            path: dev.mountPath
+        });
     });
     res.json(options);
 });
 
 app.get('/api/settings', verifyToken, (req, res) => {
-    res.json(getSettings());
+    const dbData = getNvrDb();
+    const curSettings = getSettings();
+    curSettings.recording_path = dbData.recording_path || curSettings.globalStoragePath || '';
+    res.json(curSettings);
 });
 
 app.get('/api/logs', verifyToken, (req, res) => {
@@ -941,12 +1429,23 @@ app.post('/api/settings', verifyToken, (req, res) => {
     const prevStoragePath = settings.globalStoragePath;
 
     settings = { ...settings, ...req.body };
+
+    // Jika globalStoragePath atau recording_path di-update, simpan juga ke data/nvr_db.json
+    const targetStorage = req.body.recording_path || req.body.globalStoragePath;
+    if (targetStorage !== undefined) {
+        const dbData = getNvrDb();
+        dbData.recording_path = targetStorage;
+        saveNvrDb(dbData);
+        settings.globalStoragePath = targetStorage;
+    }
+
     fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
-    sysLog('INFO', `Pengaturan Sistem Diperbarui (Storage: ${settings.globalStorageMode}, Recording Quality: ${settings.recordingQuality || 'main'}, MediaMTX Port: ${settings.mediamtxPort || 8889})`);
+    sysLog('INFO', `Pengaturan Sistem Diperbarui (Storage: ${settings.globalStoragePath || settings.globalStorageMode}, Recording Quality: ${settings.recordingQuality || 'main'}, MediaMTX Port: ${settings.mediamtxPort || 8889})`);
 
     syncMediaMtxConfig();
 
     if (prevQuality !== settings.recordingQuality || prevStorageMode !== settings.globalStorageMode || prevStoragePath !== settings.globalStoragePath) {
+        ensureRecordFolders();
         startAllStreams();
     }
     res.json({ success: true, settings });

@@ -44,6 +44,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let playerMode = 'iframe'; // 'iframe' | 'whep'
     let currentGridCount = 4;
     let recordingsMap = {}; // { 'cam_1': { '2023-10-01': ['15-30-00.mp4'] } }
+    let detectedStorageDevices = [];
+    let sysMonitorInterval = null;
 
     // --- Authentication ---
     const authOverlay = document.getElementById('authOverlay');
@@ -175,6 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
         initPasswordPeeks();
         fetchCameras();
         setInterval(fetchCameras, 30000); // refresh 30s
+        startSystemMonitoring(); // Armbian Real-time System Monitoring (CPU, RAM, Suhu STB, Storage, Network)
     }
 
     // Initialize password peeks immediately for login/setup overlay
@@ -450,7 +453,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="state-spinner"></div>
                         <div class="state-title">Menghubungkan MediaMTX...</div>
                         <div class="state-subtitle">${cam.name} &bull; ${streamUrl}</div>
-                        <div class="state-engine-tag">⚡ MediaMTX WebRTC (&lt;0.5s Latency)</div>
+                        <div class="state-engine-tag">⚡ MediaMTX WebRTC V8.2 (&lt;0.5s Latency)</div>
                         <button class="btn-retry" onclick="retryStream('${cam.id}')" style="display:none;" id="btn-retry-${cam.id}">Coba Ulang</button>
                     </div>
 
@@ -977,6 +980,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnSettings.addEventListener('click', () => {
         modal.classList.add('active');
         fetchSystemSettings();
+        fetchStorageDevices();
         renderModalList();
     });
 
@@ -1005,6 +1009,203 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // --- Armbian Real-time System Monitoring Engine ---
+    async function updateSystemStats() {
+        try {
+            const res = await fetch('/api/system/stats');
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!data) return;
+
+            // 1. CPU Usage (%)
+            const cpuValEl = document.getElementById('monCpuVal');
+            const cpuBarEl = document.getElementById('monCpuBar');
+            if (cpuValEl && data.cpu) {
+                const cpuPct = data.cpu.usagePercent || 0;
+                cpuValEl.textContent = `${cpuPct}%`;
+                if (cpuBarEl) {
+                    cpuBarEl.style.width = `${Math.min(100, Math.max(0, cpuPct))}%`;
+                    cpuBarEl.style.backgroundColor = cpuPct > 80 ? '#ef4444' : (cpuPct > 50 ? '#f59e0b' : '#3b82f6');
+                }
+            }
+
+            // 2. RAM Usage (%)
+            const ramValEl = document.getElementById('monRamVal');
+            const ramBarEl = document.getElementById('monRamBar');
+            if (ramValEl && data.ram) {
+                const ramPct = (data.ram.usagePercent !== undefined ? data.ram.usagePercent : data.ram.usedPercent) || 0;
+                ramValEl.textContent = `${ramPct}%`;
+                if (ramBarEl) {
+                    ramBarEl.style.width = `${Math.min(100, Math.max(0, ramPct))}%`;
+                    ramBarEl.style.backgroundColor = ramPct > 85 ? '#ef4444' : (ramPct > 65 ? '#f59e0b' : '#3b82f6');
+                }
+            }
+
+            // 3. Suhu STB (°C) dari /sys/class/thermal/thermal_zone0/temp
+            const tempValEl = document.getElementById('monTempVal');
+            if (tempValEl && data.temp) {
+                const deg = data.temp.celsius || 0;
+                tempValEl.textContent = `${deg}°C`;
+                tempValEl.classList.remove('mon-temp-warm', 'mon-temp-hot');
+                if (data.temp.status === 'hot' || deg >= 75) {
+                    tempValEl.classList.add('mon-temp-hot');
+                } else if (data.temp.status === 'warm' || deg >= 65) {
+                    tempValEl.classList.add('mon-temp-warm');
+                }
+            }
+
+            // 4. Storage Utama / Media Simpan (% terpakai & sisa GB)
+            const diskValEl = document.getElementById('monDiskVal');
+            if (diskValEl && data.storage) {
+                const diskPct = data.storage.percentUsed || 0;
+                const freeGB = data.storage.freeGB || 0;
+                diskValEl.textContent = `${diskPct}% (${freeGB}GB sisa)`;
+            }
+
+            // 5. Interface Jaringan Aktif & Kecepatan Download/Upload
+            const netIfEl = document.getElementById('monNetIf');
+            const netValEl = document.getElementById('monNetVal');
+            if (data.network) {
+                const ifName = data.network.interface || data.network.iface || 'eth0';
+                const rxRate = data.network.rxSpeedFormatted || data.network.downSpeed || '0 KB/s';
+                const txRate = data.network.txSpeedFormatted || data.network.upSpeed || '0 KB/s';
+                if (netIfEl) netIfEl.textContent = `${ifName}:`;
+                if (netValEl) {
+                    netValEl.textContent = `↓ ${rxRate} ↑ ${txRate}`;
+                }
+            }
+        } catch(err) {
+            // Polling gagal secara anggun tanpa mengganggu UI
+        }
+    }
+
+    function startSystemMonitoring() {
+        if (sysMonitorInterval) clearInterval(sysMonitorInterval);
+        updateSystemStats();
+        // Polling statistik real-time setiap 3 detik
+        sysMonitorInterval = setInterval(updateSystemStats, 3000);
+    }
+
+    // --- Auto-Detect & Konfigurasi Media Penyimpanan Rekaman (USB/HDD) ---
+    async function fetchStorageDevices() {
+        const selEl = document.getElementById('sysStorageDevice');
+        const customInput = document.getElementById('sysCustomStoragePath');
+        if (!selEl) return;
+
+        try {
+            selEl.innerHTML = '<option value="">Memindai drive penyimpanan...</option>';
+            const res = await fetch('/api/system/storage-devices');
+            if (!res.ok) throw new Error('Gagal memuat daftar perangkat penyimpanan');
+            const data = await res.json();
+            detectedStorageDevices = data.devices || [];
+
+            selEl.innerHTML = '';
+            const currentPath = data.currentStoragePath || '';
+
+            if (detectedStorageDevices.length === 0) {
+                selEl.innerHTML = '<option value="">Tidak ada media eksternal terdeteksi</option>';
+            } else {
+                detectedStorageDevices.forEach(dev => {
+                    const opt = document.createElement('option');
+                    opt.value = dev.mountPath;
+                    const icon = dev.category === 'External' ? '🔌 [USB/HDD]' : (dev.category === 'Internal' ? '💽 [Internal]' : '📁 [Kustom]');
+                    opt.textContent = `${icon} ${dev.name} • Sisa: ${dev.freeGB} GB (${dev.percentUsed}% terpakai)`;
+                    if (dev.selected || dev.mountPath === currentPath) {
+                        opt.selected = true;
+                    }
+                    selEl.appendChild(opt);
+                });
+            }
+
+            const customOpt = document.createElement('option');
+            customOpt.value = '__custom__';
+            customOpt.textContent = '⚙️ Tentukan Jalur Folder Kustom...';
+            selEl.appendChild(customOpt);
+
+            if (customInput) {
+                customInput.value = currentPath;
+            }
+
+            renderStoragePreview(selEl.value);
+        } catch(err) {
+            selEl.innerHTML = '<option value="">Gagal memindai perangkat</option>';
+        }
+    }
+
+    function renderStoragePreview(selectedPath) {
+        const previewBox = document.getElementById('storageDevicePreview');
+        if (!previewBox) return;
+
+        if (!selectedPath || selectedPath === '__custom__') {
+            previewBox.style.display = 'none';
+            return;
+        }
+
+        const dev = detectedStorageDevices.find(d => d.mountPath === selectedPath);
+        if (!dev) {
+            previewBox.style.display = 'none';
+            return;
+        }
+
+        previewBox.style.display = 'block';
+        const nameEl = document.getElementById('stPreviewName');
+        const mountEl = document.getElementById('stPreviewMount');
+        const capEl = document.getElementById('stPreviewCapacity');
+        const freeEl = document.getElementById('stPreviewFree');
+        const fillEl = document.getElementById('stPreviewFill');
+
+        if (nameEl) nameEl.textContent = `Drive: ${dev.name}`;
+        if (mountEl) mountEl.textContent = dev.mountPath;
+        if (capEl) capEl.textContent = `Total: ${dev.totalGB} GB (${dev.percentUsed}% Terpakai)`;
+        if (freeEl) freeEl.textContent = `Sisa: ${dev.freeGB} GB`;
+        if (fillEl) {
+            fillEl.style.width = `${Math.min(100, Math.max(0, dev.percentUsed))}%`;
+            fillEl.style.backgroundColor = dev.percentUsed > 85 ? '#ef4444' : (dev.percentUsed > 65 ? '#f59e0b' : '#3b82f6');
+        }
+    }
+
+    // Storage selection change listener
+    const sysStorageSelect = document.getElementById('sysStorageDevice');
+    if (sysStorageSelect) {
+        sysStorageSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            const customInput = document.getElementById('sysCustomStoragePath');
+            if (val === '__custom__') {
+                if (customInput) {
+                    customInput.focus();
+                }
+                renderStoragePreview('');
+            } else {
+                if (customInput) {
+                    customInput.value = val;
+                }
+                renderStoragePreview(val);
+            }
+        });
+    }
+
+    const btnRefreshStorage = document.getElementById('btnRefreshStorage');
+    if (btnRefreshStorage) {
+        btnRefreshStorage.addEventListener('click', () => {
+            fetchStorageDevices();
+        });
+    }
+
+    const sysCustomStorageInput = document.getElementById('sysCustomStoragePath');
+    if (sysCustomStorageInput) {
+        sysCustomStorageInput.addEventListener('input', (e) => {
+            const val = e.target.value.trim();
+            const matched = detectedStorageDevices.find(d => d.mountPath === val);
+            if (matched) {
+                if (sysStorageSelect) sysStorageSelect.value = matched.mountPath;
+                renderStoragePreview(matched.mountPath);
+            } else {
+                if (sysStorageSelect) sysStorageSelect.value = '__custom__';
+                renderStoragePreview('');
+            }
+        });
+    }
+
     async function fetchSystemSettings() {
         try {
             const res = await fetch('/api/settings');
@@ -1032,6 +1233,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const sysPlayerEl = document.getElementById('sysPlayerMode');
             if (sysPlayerEl) sysPlayerEl.value = pMode;
             playerMode = pMode;
+
+            if (data.recordingPath) {
+                const customInput = document.getElementById('sysCustomStoragePath');
+                if (customInput) customInput.value = data.recordingPath;
+            }
         } catch(e) {}
     }
 
@@ -1041,12 +1247,32 @@ document.addEventListener('DOMContentLoaded', () => {
         const mPort = parseInt(document.getElementById('sysMediaMtxPort')?.value || '8889', 10);
         const mHost = (document.getElementById('sysMediaMtxHost')?.value || '').trim();
         const pMode = document.getElementById('sysPlayerMode')?.value || 'iframe';
+        const chosenStorage = (document.getElementById('sysCustomStoragePath')?.value || '').trim();
 
+        // 1. Simpan Jalur Penyimpanan Rekaman (USB/HDD) jika ditentukan
+        if (chosenStorage) {
+            try {
+                const storageRes = await fetch('/api/system/storage-devices/select', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ storagePath: chosenStorage })
+                });
+                const storageData = await storageRes.json();
+                if (!storageRes.ok) {
+                    alert(`Peringatan Penyimpanan: ${storageData.error || 'Gagal mengatur jalur penyimpanan'}`);
+                }
+            } catch(stErr) {
+                console.warn('Gagal menyimpan storage:', stErr);
+            }
+        }
+
+        // 2. Simpan Pengaturan Sistem & MediaMTX
         const payload = {
             recordingQuality: recQ,
             mediamtxPort: mPort,
             mediamtxHost: mHost,
             playerMode: pMode,
+            recordingPath: chosenStorage,
             telegramBotToken: document.getElementById('sysTgBot').value,
             telegramChatId: document.getElementById('sysTgChat').value
         };
@@ -1064,7 +1290,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const globRecEl = document.getElementById('globalRecordingQuality');
         if (globRecEl) globRecEl.value = recQ;
 
-        alert('Pengaturan Sistem & MediaMTX Live View berhasil disimpan');
+        // Segera perbarui monitoring bar
+        updateSystemStats();
+
+        alert('Pengaturan Sistem, MediaMTX, dan Media Penyimpanan Rekaman berhasil disimpan!');
         renderGrid(currentGridCount);
     });
 

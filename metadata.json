@@ -1,6 +1,6 @@
 {
   "name": "Archer_NVR",
-  "description": "NVR CCTV Backend with Node.js, Express, MediaMTX WebRTC WHEP live streaming and FFmpeg recording for Armbian STB.",
+  "description": "NVR CCTV Backend with Node.js, Express, MediaMTX WebRTC live streaming, Armbian OS system monitor, and auto-detect USB/HDD storage for STB.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -84,11 +84,104 @@ ul { list-style: none; }
 
 /* Main Content Area */
 .main-content { flex: 1; display: flex; flex-direction: column; background-color: #000; position: relative; }
-.topbar { position: absolute; top: 0; left: 0; right: 0; padding: 1rem 1.5rem; background: linear-gradient(rgba(0,0,0,0.8), transparent); z-index: 20; pointer-events: none; }
-.top-status { display: flex; justify-content: space-between; align-items: center; pointer-events: auto; }
+.topbar { position: absolute; top: 0; left: 0; right: 0; padding: 0.75rem 1.25rem; background: linear-gradient(to bottom, rgba(0,0,0,0.85), rgba(0,0,0,0.2) 80%, transparent); z-index: 20; pointer-events: none; }
+.top-status { display: flex; justify-content: space-between; align-items: center; gap: 1rem; pointer-events: auto; width: 100%; }
+
+/* --- Armbian Real-time System Monitoring Bar --- */
+.sys-monitor-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 9999px;
+    padding: 0.35rem 0.85rem;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+    pointer-events: auto;
+    user-select: none;
+}
+
+.mon-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0 0.45rem;
+    white-space: nowrap;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+.mon-item:last-child {
+    border-right: none;
+    padding-right: 0;
+}
+
+.mon-icon {
+    font-size: 0.85rem;
+    line-height: 1;
+}
+
+.mon-label {
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.mon-val {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-weight: 700;
+    font-size: 0.78rem;
+    color: #f8fafc;
+}
+
+.mon-bar {
+    width: 32px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-left: 0.15rem;
+}
+
+.mon-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: #3b82f6;
+    border-radius: 2px;
+    transition: width 0.4s ease, background-color 0.3s ease;
+}
+
+.mon-temp-warm {
+    color: #f59e0b !important;
+}
+
+.mon-temp-hot {
+    color: #ef4444 !important;
+    animation: blink-temp 1.5s infinite;
+}
+
+@keyframes blink-temp {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.mon-net-speed {
+    color: #38bdf8;
+    font-size: 0.73rem;
+}
+
+.storage-info-box {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 0.75rem;
+}
+
 .status-indicator { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; font-size: 0.8rem; color: var(--accent); background: rgba(239,68,68,0.15); padding: 0.3rem 0.6rem; border-radius: 4px; backdrop-filter: blur(4px); }
 .dot.pulse { width: 6px; height: 6px; background-color: var(--accent); border-radius: 50%; animation: pulse-animation 2s infinite; }
-.top-actions { display: flex; align-items: center; gap: 1.5rem; }
+.top-actions { display: flex; align-items: center; gap: 1rem; }
 .clock { font-family: monospace; font-size: 1.1rem; font-weight: bold; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
 .btn-settings { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-weight: 500; transition: all 0.2s; }
 .btn-settings:hover { background: rgba(255,255,255,0.2); }
@@ -508,10 +601,45 @@ ul { list-style: none; }
 
 /* --- Responsive & Mobile Optimizations --- */
 @media (max-width: 1024px) {
-    /* Tablet: Max 2 columns handled by auto-fit */
+    .sys-monitor-bar {
+        padding: 0.3rem 0.6rem;
+        gap: 0.3rem;
+    }
+    .mon-bar {
+        display: none;
+    }
 }
 
 @media (max-width: 768px) {
+    .topbar {
+        padding: 0.5rem 0.75rem;
+    }
+    .top-status {
+        gap: 0.5rem;
+    }
+    .sys-monitor-bar {
+        overflow-x: auto;
+        max-width: calc(100vw - 150px);
+        padding: 0.25rem 0.5rem;
+        gap: 0.25rem;
+        scrollbar-width: none;
+        border-radius: 8px;
+    }
+    .sys-monitor-bar::-webkit-scrollbar {
+        display: none;
+    }
+    .mon-item {
+        padding: 0 0.25rem;
+    }
+    .mon-val {
+        font-size: 0.72rem;
+    }
+    .mon-label {
+        display: none;
+    }
+    .clock {
+        display: none;
+    }
     .sidebar {
         position: fixed;
         left: -100%;
