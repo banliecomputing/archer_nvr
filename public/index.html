@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Archer_NVR</title>
-    <meta name="description" content="NVR CCTV Backend with Node.js, Express, FFmpeg and HLS streaming for Armbian STB.">
+    <meta name="description" content="NVR CCTV Backend with Node.js, Express, MediaMTX WebRTC WHEP live streaming and FFmpeg recording for Armbian STB.">
     <meta property="og:title" content="Archer_NVR">
-    <meta property="og:description" content="NVR CCTV Backend with Node.js, Express, FFmpeg and HLS streaming for Armbian STB.">
+    <meta property="og:description" content="NVR CCTV Backend with Node.js, Express, MediaMTX WebRTC WHEP live streaming and FFmpeg recording for Armbian STB.">
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
@@ -16,9 +16,9 @@
         <div class="auth-card" id="authCard">
             <div class="brand" style="justify-content:center; border:none; padding-bottom:0.5rem;">
                 <span class="icon">🛡️</span>
-                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V7.5</span></h2>
+                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V8.0</span></h2>
             </div>
-            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v7.5 &bull; Low-Latency HLS &bull; RTSP Jitter Stabilization</p>
+            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v8.0 &bull; MediaMTX WebRTC Live View (&lt;0.5s) &bull; Copy-Only FFmpeg Recording</p>
             <h3 id="authTitle" style="text-align:center; margin-bottom:1.5rem;">Memuat...</h3>
             
             <form id="authForm" style="display:none;">
@@ -58,7 +58,7 @@
             <div class="brand">
                 <button id="btnToggleSidebar" class="btn-icon" title="Toggle Sidebar" style="margin-right:0.5rem; background:transparent; border:none; font-size:1.2rem; pointer-events:auto; display:none;">☰</button>
                 <span class="icon brand-text">🛡️</span>
-                <h2 class="brand-text">Archer_NVR <span class="badge">V7.5</span></h2>
+                <h2 class="brand-text">Archer_NVR <span class="badge">V8.0</span></h2>
             </div>
             
             <nav class="main-tabs">
@@ -137,7 +137,7 @@
                     <button id="btnMobileMenu" class="btn-mobile-menu" aria-label="Toggle Menu">☰</button>
                     <div class="status-indicator">
                         <div class="dot pulse"></div>
-                        <span>SISTEM NVR V7.5</span>
+                        <span>SISTEM NVR V8.0 (MediaMTX WebRTC)</span>
                     </div>
                     <div class="top-actions">
                         <div class="clock" id="clock">00:00:00</div>
@@ -340,7 +340,32 @@
                 <!-- Tab System -->
                 <div id="stab-system" class="stab-pane">
                     <form id="systemForm" style="margin-bottom: 2rem;">
-                        <h3 style="border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-bottom: 1rem;">Pengaturan Rekaman & Notifikasi</h3>
+                        <h3 style="border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-bottom: 1rem;">Engine Live View & MediaMTX</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">MediaMTX memproses live stream WebRTC tanpa beban CPU transcoding di Node.js (Ultra Low Latency &lt;0.5 detik).</p>
+
+                        <div class="form-row">
+                            <div class="form-group flex-1">
+                                <label for="sysMediaMtxPort">Port MediaMTX (WHEP / WebRTC)</label>
+                                <input type="number" id="sysMediaMtxPort" value="8889" min="1024" max="65535">
+                                <small class="form-help">Default: 8889 (Port WebRTC / WHEP MediaMTX).</small>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label for="sysMediaMtxHost">Host / IP STB Armbian</label>
+                                <input type="text" id="sysMediaMtxHost" placeholder="Kosongkan untuk otomatis (IP browser)">
+                                <small class="form-help">Biarkan kosong untuk otomatis menggunakan IP STB saat ini.</small>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="sysPlayerMode">Mode Pemutar Live View</label>
+                            <select id="sysPlayerMode" class="form-control">
+                                <option value="iframe">Iframe MediaMTX Player (Rekomendasi &bull; Stabil & Ringan)</option>
+                                <option value="whep">WebRTC WHEP Native (HTML5 Video Element)</option>
+                            </select>
+                            <small class="form-help">Format URL Pemutar: http://[IP_STB]:8889/[camera_id]</small>
+                        </div>
+
+                        <h3 style="border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-top: 1.5rem; margin-bottom: 1rem;">Pengaturan Rekaman & Notifikasi</h3>
                         
                         <div class="form-group">
                             <label for="sysRecordingQuality">Kualitas Rekaman Video Global (Resolusi Simpan Disk)</label>
@@ -348,7 +373,7 @@
                                 <option value="main">High Quality (Main Stream HD) [Rekomendasi untuk Bukti Rekaman]</option>
                                 <option value="sub">Low Quality (Sub Stream SD) [Hemat Penyimpanan]</option>
                             </select>
-                            <small class="form-help">Pilih resolusi video stream yang disimpan ke USB/SD Card.</small>
+                            <small class="form-help">Pilih resolusi video stream yang disimpan ke USB/SD Card via FFmpeg (-c:v copy).</small>
                         </div>
 
                         <h4 style="font-size:0.95rem; color:#e2e8f0; margin-top:1.5rem; margin-bottom:0.5rem;">Notifikasi Telegram</h4>

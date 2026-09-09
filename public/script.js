@@ -38,6 +38,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let cameras = [];
     let hlsInstances = {}; 
     let liveSyncTimers = {};
+    let webrtcConnections = {};
+    let mediamtxPort = 8889;
+    let mediamtxHost = '';
+    let playerMode = 'iframe'; // 'iframe' | 'whep'
     let currentGridCount = 4;
     let recordingsMap = {}; // { 'cam_1': { '2023-10-01': ['15-30-00.mp4'] } }
 
@@ -337,7 +341,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             const data = await res.json();
-            cameras = data.cameras;
+            cameras = data.cameras || [];
+            if (data.mediamtxPort) mediamtxPort = data.mediamtxPort;
+            if (data.mediamtxHost !== undefined) mediamtxHost = data.mediamtxHost;
             updateCameraSidebar();
             renderGrid(currentGridCount);
             renderModalList();
@@ -373,13 +379,48 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    function renderGrid(count) {
-        Object.values(hlsInstances).forEach(hls => {
-            try { hls.destroy(); } catch (e) {}
-        });
+    function getMediaMtxStreamUrl(cam, streamType = 'main') {
+        const host = (mediamtxHost && mediamtxHost.trim()) ? mediamtxHost.trim() : (window.location.hostname || 'localhost');
+        const port = mediamtxPort || 8889;
+        const safeId = (cam.id || '').replace(/[^a-zA-Z0-9_\-]/g, '_');
+        
+        let path = cam.mediaMtxPath || safeId;
+        if (streamType === 'sub') {
+            if (cam.mediaMtxSubPath) {
+                path = cam.mediaMtxSubPath;
+            } else if (cam.subStreamUrl && cam.subStreamUrl !== cam.mainStreamUrl) {
+                path = `${safeId}_sub`;
+            }
+        }
+        return `http://${host}:${port}/${path}`;
+    }
+
+    function cleanupCameraPlayer(camId) {
+        if (webrtcConnections[camId]) {
+            try { webrtcConnections[camId].close(); } catch(e) {}
+            delete webrtcConnections[camId];
+        }
+        if (hlsInstances[camId]) {
+            try { hlsInstances[camId].destroy(); } catch(e) {}
+            delete hlsInstances[camId];
+        }
+        if (liveSyncTimers[camId]) {
+            clearInterval(liveSyncTimers[camId]);
+            delete liveSyncTimers[camId];
+        }
+    }
+
+    function cleanupAllPlayers() {
+        Object.keys(webrtcConnections).forEach(id => cleanupCameraPlayer(id));
+        webrtcConnections = {};
+        Object.keys(hlsInstances).forEach(id => cleanupCameraPlayer(id));
         hlsInstances = {};
         Object.values(liveSyncTimers).forEach(t => clearInterval(t));
         liveSyncTimers = {};
+    }
+
+    function renderGrid(count) {
+        cleanupAllPlayers();
 
         videoGrid.innerHTML = '';
         videoGrid.className = `video-grid grid-${count}`;
@@ -396,19 +437,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 const cam = activeCameras[i];
                 const isSingle = count === 1;
                 const initialStreamType = isSingle ? 'main' : 'sub';
-                const initialStreamUrl = initialStreamType === 'main' ? cam.mainHls : cam.subHls;
+                const streamUrl = getMediaMtxStreamUrl(cam, initialStreamType);
 
                 cell.dataset.camId = cam.id;
                 cell.dataset.streamType = initialStreamType;
 
                 cell.innerHTML = `
-                    <video id="video-${cam.id}" autoplay muted playsinline></video>
+                    <div class="cam-player-wrapper" id="player-wrapper-${cam.id}"></div>
                     
-                    <!-- Camera State Overlay (Fixes Dark Screen) -->
+                    <!-- Camera State Overlay -->
                     <div class="cam-state-overlay" id="state-overlay-${cam.id}">
                         <div class="state-spinner"></div>
-                        <div class="state-title">Menghubungkan RTSP...</div>
-                        <div class="state-subtitle">${cam.name} (${cam.mainStreamUrl || 'RTSP Stream'})</div>
+                        <div class="state-title">Menghubungkan MediaMTX...</div>
+                        <div class="state-subtitle">${cam.name} &bull; ${streamUrl}</div>
+                        <div class="state-engine-tag">⚡ MediaMTX WebRTC (&lt;0.5s Latency)</div>
                         <button class="btn-retry" onclick="retryStream('${cam.id}')" style="display:none;" id="btn-retry-${cam.id}">Coba Ulang</button>
                     </div>
 
@@ -417,9 +459,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="pulse-dot" id="dot-${cam.id}"></span>
                             <span class="cam-name">${cam.name}</span>
                             <span class="cam-stream-tag" id="tag-${cam.id}">${initialStreamType === 'main' ? 'HD' : 'SD'}</span>
+                            <span class="cam-webrtc-badge" title="WebRTC Low-Latency Live View">&bull; WebRTC</span>
                         </div>
                         <div class="cam-controls">
-                            <!-- Live View Selector (YouTube Style) -->
+                            <!-- Live View Selector (HD / SD) -->
                             <div class="cam-quality-picker">
                                 <select class="quality-select" id="quality-${cam.id}" onchange="changeCameraQuality('${cam.id}', this.value, '${cell.id}')" title="Pilih Kualitas Stream (Live View)">
                                     <option value="main" ${initialStreamType === 'main' ? 'selected' : ''}>HD / Main</option>
@@ -433,10 +476,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
                 videoGrid.appendChild(cell);
 
-                initHlsPlayer(cam.id, initialStreamUrl, cell, 0);
+                initMediaMtxPlayer(cam.id, initialStreamType, cell, 0);
 
                 cell.addEventListener('fullscreenchange', () => {
-                    handleFullscreenChange(cam.id, cell, cam.mainHls, cam.subHls);
+                    handleFullscreenChange(cam.id, cell);
                 });
             } else {
                 cell.innerHTML = `
@@ -450,13 +493,150 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function initMediaMtxPlayer(camId, streamType, cellElement, retryCount = 0) {
+        const cam = cameras.find(c => c.id === camId);
+        if (!cam) return;
+
+        const wrapper = cellElement.querySelector(`#player-wrapper-${camId}`);
+        if (!wrapper) return;
+
+        const pulseDot = cellElement.querySelector(`#dot-${camId}`) || cellElement.querySelector('.pulse-dot');
+        const stateOverlay = cellElement.querySelector(`#state-overlay-${camId}`);
+        const stateTitle = stateOverlay ? stateOverlay.querySelector('.state-title') : null;
+        const stateSubtitle = stateOverlay ? stateOverlay.querySelector('.state-subtitle') : null;
+        const btnRetry = cellElement.querySelector(`#btn-retry-${camId}`);
+        const spinner = stateOverlay ? stateOverlay.querySelector('.state-spinner') : null;
+
+        const streamUrl = getMediaMtxStreamUrl(cam, streamType);
+
+        cleanupCameraPlayer(camId);
+
+        const setOverlayState = (mode, title, subtitle) => {
+            if (!stateOverlay) return;
+            if (mode === 'hidden') {
+                stateOverlay.classList.add('hidden');
+                if (pulseDot) pulseDot.classList.remove('offline');
+            } else if (mode === 'loading') {
+                stateOverlay.classList.remove('hidden');
+                if (spinner) spinner.style.display = 'block';
+                if (btnRetry) btnRetry.style.display = 'none';
+                if (stateTitle) stateTitle.textContent = title || 'Menghubungkan MediaMTX...';
+                if (stateSubtitle && subtitle) stateSubtitle.textContent = subtitle;
+            } else if (mode === 'error') {
+                stateOverlay.classList.remove('hidden');
+                if (spinner) spinner.style.display = 'none';
+                if (btnRetry) btnRetry.style.display = 'inline-block';
+                if (stateTitle) stateTitle.textContent = title || 'Stream MediaMTX Tidak Tersedia';
+                if (stateSubtitle && subtitle) stateSubtitle.textContent = subtitle;
+                if (pulseDot) pulseDot.classList.add('offline');
+            }
+        };
+
+        setOverlayState('loading', 'Menghubungkan WebRTC MediaMTX...', streamUrl);
+
+        if (playerMode === 'whep' && window.RTCPeerConnection) {
+            // WebRTC WHEP Native Player via HTML5 <video>
+            wrapper.innerHTML = `<video id="video-${camId}" autoplay muted playsinline class="cam-player-video"></video>`;
+            const videoEl = wrapper.querySelector('video');
+
+            try {
+                const whepUrl = `${streamUrl}/whep`;
+                const pc = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+                webrtcConnections[camId] = pc;
+
+                pc.addTransceiver('video', { direction: 'recvonly' });
+                pc.addTransceiver('audio', { direction: 'recvonly' });
+
+                pc.ontrack = (event) => {
+                    if (event.streams && event.streams[0]) {
+                        videoEl.srcObject = event.streams[0];
+                    } else {
+                        const stream = new MediaStream();
+                        stream.addTrack(event.track);
+                        videoEl.srcObject = stream;
+                    }
+                    videoEl.play().catch(e => console.warn('[WebRTC] Play:', e));
+                };
+
+                videoEl.onplaying = () => {
+                    setOverlayState('hidden');
+                };
+
+                pc.oniceconnectionstatechange = () => {
+                    if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+                        setOverlayState('error', 'Koneksi WebRTC Terputus', 'Menyambung ulang...');
+                    }
+                };
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                const res = await fetch(whepUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/sdp' },
+                    body: pc.localDescription.sdp
+                });
+
+                if (!res.ok) throw new Error(`WHEP HTTP ${res.status}`);
+
+                const answerSdp = await res.text();
+                await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+
+                setTimeout(() => {
+                    if (videoEl.readyState >= 2 || !videoEl.paused) {
+                        setOverlayState('hidden');
+                    }
+                }, 1200);
+
+            } catch (err) {
+                console.warn(`[WHEP Error] Beralih ke iframe MediaMTX untuk ${camId}:`, err);
+                renderIframePlayer();
+            }
+        } else {
+            // Mode Iframe MediaMTX Built-in WebRTC Player (http://[IP_STB]:8889/[camera_id])
+            renderIframePlayer();
+        }
+
+        function renderIframePlayer() {
+            wrapper.innerHTML = `
+                <iframe 
+                    id="player-${camId}" 
+                    src="${streamUrl}" 
+                    class="cam-player-frame" 
+                    allow="autoplay; fullscreen" 
+                    frameborder="0"
+                    loading="lazy">
+                </iframe>
+            `;
+            const iframe = wrapper.querySelector('iframe');
+            
+            iframe.onload = () => {
+                setTimeout(() => {
+                    setOverlayState('hidden');
+                }, 700);
+            };
+
+            iframe.onerror = () => {
+                setOverlayState('error', 'Gagal Memuat Player MediaMTX', `Periksa MediaMTX port ${mediamtxPort || 8889}`);
+            };
+
+            // Watchdog fallback jika onload event terhambat oleh browser
+            setTimeout(() => {
+                if (stateOverlay && !stateOverlay.classList.contains('hidden')) {
+                    setOverlayState('hidden');
+                }
+            }, 2000);
+        }
+    }
+
     window.changeCameraQuality = function(camId, targetType, cellId) {
         const cell = document.getElementById(cellId) || document.querySelector(`.cam-cell[data-cam-id="${camId}"]`);
         if (!cell) return;
         const cam = cameras.find(c => c.id === camId);
         if (!cam) return;
 
-        const targetUrl = targetType === 'main' ? cam.mainHls : (cam.subHls || cam.mainHls);
         cell.dataset.streamType = targetType;
         
         const tag = cell.querySelector(`#tag-${camId}`);
@@ -467,8 +647,8 @@ document.addEventListener('DOMContentLoaded', () => {
             qSelect.value = targetType;
         }
 
-        console.log(`[Stream Switch] Kamera ${cam.name} beralih ke stream ${targetType.toUpperCase()}`);
-        initHlsPlayer(camId, targetUrl, cell, 0);
+        console.log(`[MediaMTX Switch] Kamera ${cam.name} beralih ke stream ${targetType.toUpperCase()}`);
+        initMediaMtxPlayer(camId, targetType, cell, 0);
     };
 
     window.toggleFullscreen = function(camId, cellId) {
@@ -482,192 +662,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    function handleFullscreenChange(camId, cell, mainHls, subHls) {
+    function handleFullscreenChange(camId, cell) {
         const isFull = !!document.fullscreenElement;
-        const targetUrl = isFull ? mainHls : subHls;
         const currentType = cell.dataset.streamType;
+        const nextType = isFull ? 'main' : (currentGridCount === 1 ? 'main' : 'sub');
         
-        if ((isFull && currentType !== 'main') || (!isFull && currentType !== 'sub')) {
-            const nextType = isFull ? 'main' : 'sub';
+        if (currentType !== nextType) {
             cell.dataset.streamType = nextType;
             const tag = cell.querySelector(`#tag-${camId}`);
             if (tag) tag.textContent = nextType === 'main' ? 'HD' : 'SD';
             const qSelect = cell.querySelector(`#quality-${camId}`);
             if (qSelect) qSelect.value = nextType;
-            initHlsPlayer(camId, targetUrl, cell, 0);
-        }
-    }
-
-    async function initHlsPlayer(camId, streamUrl, cellElement, retryCount = 0) {
-        const videoEl = cellElement.querySelector('video');
-        if (!videoEl) return;
-        const pulseDot = cellElement.querySelector(`#dot-${camId}`) || cellElement.querySelector('.pulse-dot');
-        const stateOverlay = cellElement.querySelector(`#state-overlay-${camId}`);
-        const stateTitle = stateOverlay ? stateOverlay.querySelector('.state-title') : null;
-        const stateSubtitle = stateOverlay ? stateOverlay.querySelector('.state-subtitle') : null;
-        const btnRetry = cellElement.querySelector(`#btn-retry-${camId}`);
-        const spinner = stateOverlay ? stateOverlay.querySelector('.state-spinner') : null;
-
-        if (hlsInstances[camId]) {
-            try { hlsInstances[camId].destroy(); } catch (e) {}
-            delete hlsInstances[camId];
-        }
-
-        videoEl.muted = true;
-        videoEl.playsInline = true;
-        videoEl.autoplay = true;
-
-        const setOverlayState = (mode, title, subtitle) => {
-            if (!stateOverlay) return;
-            if (mode === 'hidden') {
-                stateOverlay.classList.add('hidden');
-                if (pulseDot) pulseDot.classList.remove('offline');
-            } else if (mode === 'loading') {
-                stateOverlay.classList.remove('hidden');
-                if (spinner) spinner.style.display = 'block';
-                if (btnRetry) btnRetry.style.display = 'none';
-                if (stateTitle) stateTitle.textContent = title || 'Menghubungkan RTSP...';
-                if (stateSubtitle && subtitle) stateSubtitle.textContent = subtitle;
-            } else if (mode === 'error') {
-                stateOverlay.classList.remove('hidden');
-                if (spinner) spinner.style.display = 'none';
-                if (btnRetry) btnRetry.style.display = 'inline-block';
-                if (stateTitle) stateTitle.textContent = title || 'RTSP Offline / Terputus';
-                if (stateSubtitle && subtitle) stateSubtitle.textContent = subtitle;
-                if (pulseDot) pulseDot.classList.add('offline');
-            }
-        };
-
-        const checkReady = async () => {
-            try {
-                const res = await fetch(streamUrl, { method: 'HEAD', cache: 'no-store' });
-                return res.ok;
-            } catch (e) {
-                return false;
-            }
-        };
-
-        const ready = await checkReady();
-        if (!ready) {
-            if (retryCount < 8) {
-                setOverlayState('loading', 'Menunggu Stream RTSP...', `Mencoba menghubungkan (${retryCount + 1}/8)...`);
-                setTimeout(() => {
-                    if (document.getElementById(cellElement.id)) {
-                        initHlsPlayer(camId, streamUrl, cellElement, retryCount + 1);
-                    }
-                }, 1500);
-            } else {
-                const cam = cameras.find(c => c.id === camId);
-                if (cam && streamUrl !== cam.mainHls && cellElement.dataset.streamType === 'sub') {
-                    console.log(`[HLS] Sub stream not available for ${camId}, falling back to Main stream`);
-                    cellElement.dataset.streamType = 'main';
-                    const tag = cellElement.querySelector(`#tag-${camId}`);
-                    if (tag) tag.textContent = 'HD';
-                    const qSelect = cellElement.querySelector(`#quality-${camId}`);
-                    if (qSelect) qSelect.value = 'main';
-                    initHlsPlayer(camId, cam.mainHls, cellElement, 0);
-                    return;
-                }
-                setOverlayState('error', 'RTSP Stream Terputus', 'Periksa IP/URL kamera di Pengaturan');
-            }
-            return;
-        }
-
-        setOverlayState('loading', 'Memulai Pemutar...', 'Memuat fragmen HLS');
-
-        if (Hls.isSupported()) {
-            const hls = new Hls({
-                liveSyncDurationCount: 1,
-                liveMaxLatencyDurationCount: 2,
-                maxBufferLength: 2,
-                maxMaxBufferLength: 4,
-                enableWorker: true,
-                lowLatencyMode: true,
-                backBufferLength: 0,
-                liveDurationInfinity: true,
-                highBufferWatchdogPeriod: 1
-            });
-
-            hls.loadSource(streamUrl);
-            hls.attachMedia(videoEl);
-
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                videoEl.play().catch(e => console.warn('[Video] Autoplay blocked:', e));
-            });
-
-            videoEl.onplaying = () => {
-                setOverlayState('hidden');
-            };
-
-            // Watchdog Low-Latency Live Edge: Lompat ke live edge jika video tertinggal > 2 detik
-            if (liveSyncTimers[camId]) {
-                clearInterval(liveSyncTimers[camId]);
-                delete liveSyncTimers[camId];
-            }
-            liveSyncTimers[camId] = setInterval(() => {
-                if (!videoEl || videoEl.paused || !videoEl.buffered || videoEl.buffered.length === 0) return;
-                try {
-                    const liveEdge = videoEl.buffered.end(videoEl.buffered.length - 1);
-                    const lag = liveEdge - videoEl.currentTime;
-                    if (lag > 2) {
-                        videoEl.currentTime = Math.max(0, liveEdge - 0.1);
-                    }
-                } catch (e) {}
-            }, 1000);
-
-            hls.on(Hls.Events.ERROR, (event, data) => {
-                if (data.fatal) {
-                    console.warn(`[HLS Error] ${camId}:`, data.type, data.details);
-                    if (liveSyncTimers[camId]) {
-                        clearInterval(liveSyncTimers[camId]);
-                        delete liveSyncTimers[camId];
-                    }
-                    switch (data.type) {
-                        case Hls.ErrorTypes.NETWORK_ERROR:
-                            setOverlayState('loading', 'Menyambung ulang...', 'Gangguan jaringan HLS');
-                            hls.startLoad();
-                            break;
-                        case Hls.ErrorTypes.MEDIA_ERROR:
-                            setOverlayState('loading', 'Pemulihan media...', 'Decoding error');
-                            hls.recoverMediaError();
-                            break;
-                        default:
-                            hls.destroy();
-                            delete hlsInstances[camId];
-                            setOverlayState('error', 'Stream Bermasalah', data.details || 'Gagal memutar video');
-                            setTimeout(() => {
-                                if (document.getElementById(cellElement.id)) {
-                                    initHlsPlayer(camId, streamUrl, cellElement, 0);
-                                }
-                            }, 4000);
-                            break;
-                    }
-                }
-            });
-
-            hlsInstances[camId] = hls;
-        } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-            videoEl.src = streamUrl;
-            videoEl.addEventListener('loadedmetadata', () => videoEl.play().catch(()=>{}));
-            videoEl.onplaying = () => {
-                setOverlayState('hidden');
-            };
-
-            // Watchdog Live Edge untuk Safari Native
-            if (liveSyncTimers[camId]) {
-                clearInterval(liveSyncTimers[camId]);
-                delete liveSyncTimers[camId];
-            }
-            liveSyncTimers[camId] = setInterval(() => {
-                if (!videoEl || videoEl.paused || !videoEl.buffered || videoEl.buffered.length === 0) return;
-                try {
-                    const liveEdge = videoEl.buffered.end(videoEl.buffered.length - 1);
-                    const lag = liveEdge - videoEl.currentTime;
-                    if (lag > 2) {
-                        videoEl.currentTime = Math.max(0, liveEdge - 0.1);
-                    }
-                } catch (e) {}
-            }, 1000);
+            initMediaMtxPlayer(camId, nextType, cell, 0);
         }
     }
 
@@ -682,7 +688,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const spinner = cell.querySelector('.state-spinner');
                 if (spinner) spinner.style.display = 'block';
                 const title = cell.querySelector('.state-title');
-                if (title) title.textContent = 'Memulai ulang stream...';
+                if (title) title.textContent = 'Menyinkronkan stream...';
             }
 
             await fetch(`/api/cameras/${camId}/restart`, { method: 'POST' });
@@ -690,10 +696,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const updatedCell = document.querySelector(`.cam-cell[data-cam-id="${camId}"]`);
                 const cam = cameras.find(c => c.id === camId);
                 if (updatedCell && cam) {
-                    const targetUrl = updatedCell.dataset.streamType === 'main' ? cam.mainHls : cam.subHls;
-                    initHlsPlayer(camId, targetUrl, updatedCell, 0);
+                    const currentType = updatedCell.dataset.streamType || 'sub';
+                    initMediaMtxPlayer(camId, currentType, updatedCell, 0);
                 }
-            }, 1000);
+            }, 800);
         } catch (e) {
             console.error('Gagal restart stream:', e);
         }
@@ -1011,26 +1017,55 @@ document.addEventListener('DOMContentLoaded', () => {
             if (sysRecEl) sysRecEl.value = recQ;
             const globRecEl = document.getElementById('globalRecordingQuality');
             if (globRecEl) globRecEl.value = recQ;
+
+            const mPort = data.mediamtxPort || 8889;
+            const sysPortEl = document.getElementById('sysMediaMtxPort');
+            if (sysPortEl) sysPortEl.value = mPort;
+            mediamtxPort = mPort;
+
+            const mHost = data.mediamtxHost || '';
+            const sysHostEl = document.getElementById('sysMediaMtxHost');
+            if (sysHostEl) sysHostEl.value = mHost;
+            mediamtxHost = mHost;
+
+            const pMode = data.playerMode || 'iframe';
+            const sysPlayerEl = document.getElementById('sysPlayerMode');
+            if (sysPlayerEl) sysPlayerEl.value = pMode;
+            playerMode = pMode;
         } catch(e) {}
     }
 
     document.getElementById('systemForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const recQ = document.getElementById('sysRecordingQuality')?.value || 'main';
+        const mPort = parseInt(document.getElementById('sysMediaMtxPort')?.value || '8889', 10);
+        const mHost = (document.getElementById('sysMediaMtxHost')?.value || '').trim();
+        const pMode = document.getElementById('sysPlayerMode')?.value || 'iframe';
+
         const payload = {
             recordingQuality: recQ,
+            mediamtxPort: mPort,
+            mediamtxHost: mHost,
+            playerMode: pMode,
             telegramBotToken: document.getElementById('sysTgBot').value,
             telegramChatId: document.getElementById('sysTgChat').value
         };
+
         await fetch('/api/settings', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         });
+
+        mediamtxPort = mPort;
+        mediamtxHost = mHost;
+        playerMode = pMode;
+
         const globRecEl = document.getElementById('globalRecordingQuality');
         if (globRecEl) globRecEl.value = recQ;
 
-        alert('Pengaturan Sistem & Kualitas Rekaman berhasil disimpan');
+        alert('Pengaturan Sistem & MediaMTX Live View berhasil disimpan');
+        renderGrid(currentGridCount);
     });
 
     const changePasswordForm = document.getElementById('changePasswordForm');

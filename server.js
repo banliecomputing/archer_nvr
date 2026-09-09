@@ -2,6 +2,7 @@ import express from 'express';
 import { spawn, exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
@@ -28,6 +29,10 @@ const settingsFile = path.join(__dirname, 'settings.json');
 const dataDir = path.join(__dirname, 'data');
 const nvrDbFile = path.join(dataDir, 'nvr.db.json');
 const baseStoragePath = process.env.STORAGE_PATH || path.join(__dirname, 'public', 'recordings');
+
+// MediaMTX Paths (~/mediamtx.yml)
+const homeDir = os.homedir() || process.env.HOME || '/root';
+const mediamtxConfigFile = process.env.MEDIAMTX_CONFIG_PATH || path.join(homeDir, 'mediamtx.yml');
 
 // Ensure directories
 [streamBaseDir, dataDir, baseStoragePath].forEach(dir => {
@@ -70,10 +75,12 @@ function getSettings() {
         const s = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
         if (!s.recordingQuality) s.recordingQuality = 'main';
         if (!s.globalStorageMode) s.globalStorageMode = 'disabled';
+        if (!s.mediamtxPort) s.mediamtxPort = 8889;
+        if (s.mediamtxHost === undefined) s.mediamtxHost = '';
         return s;
     }
     catch (e) { 
-        return { globalStorageMode: 'disabled', globalStoragePath: '', recordingQuality: 'main' }; 
+        return { globalStorageMode: 'disabled', globalStoragePath: '', recordingQuality: 'main', mediamtxPort: 8889, mediamtxHost: '' }; 
     }
 }
 function getCameras() {
@@ -405,274 +412,200 @@ function probeCodec(url) {
     });
 }
 
-// FFmpeg Handler
-async function spawnFFmpeg(cam, streamType) {
-    const isMain = streamType === 'main';
-    const rawUrl = isMain ? cam.mainStreamUrl : cam.subStreamUrl;
+// --- MEDIAMTX CONFIGURATION ENGINE ---
+// Auto-Generate ~/mediamtx.yml dan restart MediaMTX via PM2
+function syncMediaMtxConfig() {
+    try {
+        const cams = getCameras();
+        let lines = ['paths:'];
+        let activeCount = 0;
+
+        cams.forEach(cam => {
+            if (!cam.enabled) return;
+            const safeId = (cam.id || '').replace(/[^a-zA-Z0-9_\-]/g, '_');
+            if (!safeId) return;
+
+            const mainUrl = formatStreamUrl(cam.mainStreamUrl);
+            const subUrl = formatStreamUrl(cam.subStreamUrl);
+
+            if (mainUrl) {
+                lines.push(`  ${safeId}:`);
+                lines.push(`    source: ${mainUrl}`);
+                activeCount++;
+            }
+
+            if (subUrl && subUrl !== mainUrl) {
+                lines.push(`  ${safeId}_sub:`);
+                lines.push(`    source: ${subUrl}`);
+                activeCount++;
+            }
+        });
+
+        if (activeCount === 0) {
+            lines.push('  # Belum ada kamera aktif terdaftar');
+        }
+
+        const yamlContent = lines.join('\n') + '\n';
+
+        // Tulis konfigurasi utama ke ~/mediamtx.yml
+        fs.writeFileSync(mediamtxConfigFile, yamlContent, 'utf8');
+        sysLog('INFO', `[MediaMTX] Konfigurasi berhasil disinkronkan ke ${mediamtxConfigFile} (${activeCount} stream aktif)`);
+
+        // Tulis juga salinan di ./mediamtx.yml jika path berbeda
+        const localConfig = path.join(__dirname, 'mediamtx.yml');
+        if (localConfig !== mediamtxConfigFile) {
+            try { fs.writeFileSync(localConfig, yamlContent, 'utf8'); } catch (e) {}
+        }
+
+        // Panggil pm2 restart mediamtx agar MediaMTX membaca perubahan secara otomatis
+        exec('pm2 restart mediamtx', (err, stdout, stderr) => {
+            if (err) {
+                sysLog('WARN', `[MediaMTX] Info restart PM2: ${err.message}`);
+            } else {
+                sysLog('INFO', `[MediaMTX] MediaMTX berhasil di-restart melalui PM2.`);
+            }
+        });
+    } catch (err) {
+        sysLog('ERROR', `[MediaMTX] Gagal sinkronisasi mediamtx.yml: ${err.message}`);
+    }
+}
+
+// --- FFMPEG RECORDING ENGINE (LIGHTWEIGHT STREAM COPY ONLY) ---
+// FFmpeg digunakan KHUSUS untuk perekaman lokal/USB dengan -c:v copy -c:a copy
+function spawnRecordingFFmpeg(cam) {
+    if (!cam || !cam.enabled) return;
+    if (cam.recordMode !== 'continuous') return;
+    if (settings.globalStorageMode === 'disabled') return;
+
+    const recQuality = settings.recordingQuality || 'main';
+    const hasDistinctSub = cam.subStreamUrl && cam.subStreamUrl.trim() && cam.subStreamUrl.trim() !== cam.mainStreamUrl.trim();
+    const useSub = recQuality === 'sub' && hasDistinctSub;
+    const rawUrl = useSub ? cam.subStreamUrl : cam.mainStreamUrl;
     const sourceUrl = formatStreamUrl(rawUrl);
-    
+
     if (!sourceUrl) {
-        if (!cameraStatuses[cam.id]) cameraStatuses[cam.id] = {};
-        cameraStatuses[cam.id][streamType] = { status: 'offline', error: 'URL RTSP belum ditentukan' };
+        sysLog('WARN', `[${cam.id}] URL RTSP tidak tersedia untuk perekaman.`);
         return;
     }
 
-    if (!cameraStatuses[cam.id]) cameraStatuses[cam.id] = {};
-    cameraStatuses[cam.id][streamType] = { status: 'connecting', error: null, lastUpdate: Date.now() };
+    stopCameraRecording(cam.id);
 
-    // Pastikan folder penyimpanan sementara stream kamera dibuat otomatis jika belum ada
-    const streamDir = path.join(streamBaseDir, cam.id);
-    if (!fs.existsSync(streamDir)) {
-        fs.mkdirSync(streamDir, { recursive: true });
+    const recBase = resolveStoragePath(cam.storagePath || path.join(getActualBaseStoragePath(), cam.id));
+    if (!fs.existsSync(recBase)) {
+        fs.mkdirSync(recBase, { recursive: true });
     }
 
-    cleanStreamDir(cam.id, streamType);
-
-    const playlist = path.join(streamDir, `${streamType}.m3u8`);
-    const segmentFilename = path.join(streamDir, `${streamType}_%03d.ts`);
-
+    const segSec = cam.segmentDurationSec || 900;
     const isDemo = sourceUrl === 'demo';
 
-    // 1. Deteksi & Transcoding Otomatis H.265 / HEVC ke H.264
-    let isHevc = false;
-    if (cam.transcode === 'transcode' || cam.transcode === 'h265' || cam.transcode === 'hevc' || cam.transcode === true) {
-        isHevc = true;
-    } else if (cam.transcode === 'copy') {
-        isHevc = false;
-    } else {
-        // Mode default / 'auto': cek cache deteksi atau jalankan ffprobe
-        const cacheKey = `${cam.id}_${streamType}`;
-        if (detectedCodecs[cacheKey]) {
-            isHevc = detectedCodecs[cacheKey] === 'hevc' || detectedCodecs[cacheKey] === 'h265';
-        } else if (!isDemo) {
-            const probed = await probeCodec(sourceUrl);
-            if (probed) {
-                detectedCodecs[cacheKey] = probed;
-                isHevc = probed === 'hevc' || probed === 'h265';
-                sysLog('INFO', `[${cam.id}] Deteksi codec ${streamType}: ${probed.toUpperCase()} (${isHevc ? 'Auto-transcode H.264 diaktifkan' : 'Passthrough copy aktif'})`);
-            }
-        }
-    }
-
-    const shouldTranscode = isDemo || isHevc;
-
-    // 2. Optimasi Opsi Input & Output FFmpeg untuk RTSP & HLS Stream
-    // Penanganan stream RTSP terputus akibat 'Non-monotonic DTS' dan 'NAL unit type not implemented':
-    // - -fflags +genpts+discardcorrupt (Paksa buat ulang timestamp rusak & buang packet/frame cacat)
-    // - -err_detect ignore_err (Abaikan error kecil pada header RTSP/RTP agar tidak langsung keluar)
     let inputArgs = [];
     if (isDemo) {
         inputArgs = [
-            '-err_detect', 'ignore_err',
-            '-fflags', '+genpts+discardcorrupt',
             '-f', 'lavfi', '-i', 'testsrc=size=1280x720:rate=25',
             '-f', 'lavfi', '-i', 'sine=frequency=1000:sample_rate=44100'
         ];
     } else {
-        // Opsi input RTSP TCP dengan buffer probesize & analyzeduration 1000000 serta low-latency flags
         inputArgs = [
             '-rtsp_transport', 'tcp',
-            '-analyzeduration', '1000000',
-            '-probesize', '1000000',
             '-err_detect', 'ignore_err',
             '-fflags', '+genpts+discardcorrupt',
-            '-flags', 'low_delay',
             '-i', sourceUrl
         ];
     }
 
-    // Video: jika H.265 dan perlu transcode, gunakan libx264 ultrafast zerolatency.
-    // Jika H.264, tambahkan bitstream filter -bsf:v h264_mp4toannexb untuk menstabilkan struktur NAL unit sebelum ditulis ke HLS
-    let videoHlsArgs = [];
-    if (shouldTranscode) {
-        videoHlsArgs = ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p', '-bsf:v', 'h264_mp4toannexb'];
-    } else if (!isHevc) {
-        videoHlsArgs = ['-c:v', 'copy', '-bsf:v', 'h264_mp4toannexb'];
-    } else {
-        videoHlsArgs = ['-c:v', 'copy', '-bsf:v', 'hevc_mp4toannexb'];
-    }
-
-    // Audio: konversi ke aac 44100Hz agar tidak error dekoder bawaan kamera, gunakan -map 0:a? jika tersedia
-    const audioArgs = isDemo 
-        ? ['-map', '1:a:0', '-c:a', 'aac', '-ar', '44100', '-b:a', '64k', '-ac', '1'] 
-        : ['-map', '0:a?', '-c:a', 'aac', '-ar', '44100', '-b:a', '64k', '-ac', '1'];
-
-    // HLS Segmentasi Low-Latency & Container Output Protection:
-    // -max_muxing_queue_size 1024 : mencegah overflow antrean muxing saat paket terlambat
-    // -avoid_negative_ts make_zero : otomatis sesuaikan timestamp melompat mulai dari nol secara konsisten
-    // -hls_time 0.5, -hls_list_size 2, delete_segments+omit_endlist, no-cache
-    let args = [
+    // Perintah copy stream ringan (-c:v copy -c:a copy) khusus untuk perekaman lokal/USB
+    const args = [
         '-y',
         '-loglevel', 'warning',
         ...inputArgs,
         '-map', '0:v:0',
-        ...videoHlsArgs,
-        ...audioArgs,
+        ...(isDemo ? ['-c:v', 'libx264', '-preset', 'ultrafast'] : ['-c:v', 'copy']),
+        '-map', isDemo ? '1:a:0' : '0:a?',
+        ...(isDemo ? ['-c:a', 'aac'] : ['-c:a', 'copy']),
         '-max_muxing_queue_size', '1024',
         '-avoid_negative_ts', 'make_zero',
-        '-f', 'hls',
-        '-hls_time', '0.5',
-        '-hls_list_size', '2',
-        '-hls_flags', 'delete_segments+omit_endlist',
-        '-hls_allow_cache', '0',
-        '-hls_segment_filename', segmentFilename,
-        playlist
+        '-f', 'segment',
+        '-segment_time', segSec.toString(),
+        '-segment_format', 'mp4',
+        '-reset_timestamps', '1',
+        '-strftime', '1',
+        path.join(recBase, '%Y-%m-%d', '%H-%M-%S.mp4')
     ];
 
-    const isGlobalRecordingDisabled = settings.globalStorageMode === 'disabled';
-    const recQuality = settings.recordingQuality || 'main';
-    const hasDistinctSub = cam.subStreamUrl && cam.subStreamUrl.trim() && cam.subStreamUrl.trim() !== cam.mainStreamUrl.trim();
-    // Pilihan kualitas rekaman global:
-    // 'main': High Quality (Main Stream HD) [Rekomendasi untuk Bukti Rekaman]
-    // 'sub': Low Quality (Sub Stream SD) [Hemat Penyimpanan]
-    const targetRecStream = (recQuality === 'sub' && hasDistinctSub) ? 'sub' : 'main';
+    sysLog('INFO', `[${cam.id}] Memulai perekaman kontinyu FFmpeg (-c:v copy -c:a copy) [${useSub ? 'SD/Sub' : 'HD/Main'}] -> ${recBase}`);
 
-    if (streamType === targetRecStream && cam.recordMode === 'continuous' && !isGlobalRecordingDisabled) {
-        const recBase = resolveStoragePath(cam.storagePath || path.join(getActualBaseStoragePath(), cam.id));
-        const segSec = cam.segmentDurationSec || 900;
-        args.push(
-            '-map', '0:v:0',
-            ...(shouldTranscode ? ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p'] : ['-c:v', 'copy']),
-            '-map', isDemo ? '1:a:0' : '0:a?',
-            '-c:a', 'aac',
-            '-ar', '44100',
-            '-max_muxing_queue_size', '1024',
-            '-avoid_negative_ts', 'make_zero',
-            '-f', 'segment',
-            '-segment_time', segSec.toString(),
-            '-segment_format', 'mp4',
-            '-reset_timestamps', '1',
-            '-strftime', '1',
-            path.join(recBase, '%Y-%m-%d', '%H-%M-%S.mp4')
-        );
-        sysLog('INFO', `[${cam.id}] Perekaman kontinyu aktif pada stream ${streamType.toUpperCase()} (Kualitas: ${recQuality === 'sub' ? 'Sub Stream SD' : 'Main Stream HD'})`);
-    }
-
-    let lastStderr = '';
     const child = spawn('ffmpeg', args);
     child.killedByUser = false;
 
-    child.stderr.on('data', (data) => {
-        const text = data.toString();
-        lastStderr = text.slice(-300);
-
-        // Jika terdeteksi stream adalah HEVC/H.265 secara runtime padahal sedang mode copy, simpan deteksi untuk auto-switch
-        if ((text.includes('hevc') || text.includes('hvc1') || text.includes('H.265')) && !shouldTranscode) {
-            const cacheKey = `${cam.id}_${streamType}`;
-            if (detectedCodecs[cacheKey] !== 'hevc') {
-                detectedCodecs[cacheKey] = 'hevc';
-                sysLog('WARN', `[${cam.id}] Terdeteksi HEVC/H.265 pada output ${streamType}. Akan otomatis beralih ke transcoding H.264 ultrafast.`);
-            }
-        }
-    });
-
-    const checkTimer = setInterval(() => {
-        if (fs.existsSync(playlist)) {
-            if (cameraStatuses[cam.id] && cameraStatuses[cam.id][streamType]) {
-                cameraStatuses[cam.id][streamType].status = 'online';
-                cameraStatuses[cam.id][streamType].error = null;
-            }
-            clearInterval(checkTimer);
-        }
-    }, 1000);
-
     child.on('close', (code) => {
-        clearInterval(checkTimer);
-        if (ffProcesses[cam.id] && ffProcesses[cam.id][streamType]) {
-            delete ffProcesses[cam.id][streamType];
+        if (ffProcesses[cam.id]) {
+            delete ffProcesses[cam.id];
         }
 
-        if (child.killedByUser) {
-            if (cameraStatuses[cam.id] && cameraStatuses[cam.id][streamType]) {
-                cameraStatuses[cam.id][streamType] = { status: 'offline', error: 'Dihentikan pengguna' };
-            }
-            return;
-        }
-
-        const errMsg = lastStderr.trim() || `FFmpeg berhenti (Code: ${code})`;
-        if (cameraStatuses[cam.id] && cameraStatuses[cam.id][streamType]) {
-            cameraStatuses[cam.id][streamType] = { status: 'offline', error: errMsg, lastUpdate: Date.now() };
-        }
-
-        sysLog('WARN', `[${cam.id}] ${streamType} RTSP terputus. Info: ${errMsg.slice(0, 150)}`);
-
-        const timerKey = `${cam.id}_${streamType}`;
-        if (reconnectTimers[timerKey]) clearTimeout(reconnectTimers[timerKey]);
-
-        const currentCam = getCameras().find(c => c.id === cam.id);
-        if (currentCam && currentCam.enabled) {
-            sendTelegramAlert(`Kamera ${currentCam.name} (${streamType}) terputus. Reconnect otomatis...`);
+        if (!child.killedByUser) {
+            sysLog('WARN', `[${cam.id}] Perekaman FFmpeg berhenti (Code: ${code}). Reconnect otomatis dalam 10 detik...`);
+            const timerKey = `rec_${cam.id}`;
+            if (reconnectTimers[timerKey]) clearTimeout(reconnectTimers[timerKey]);
+            
             reconnectTimers[timerKey] = setTimeout(() => {
-                const checkCam = getCameras().find(c => c.id === cam.id);
-                if (checkCam && checkCam.enabled) {
-                    spawnFFmpeg(checkCam, streamType);
+                const currentCam = getCameras().find(c => c.id === cam.id);
+                if (currentCam && currentCam.enabled && currentCam.recordMode === 'continuous') {
+                    spawnRecordingFFmpeg(currentCam);
                 }
             }, 10000);
         }
     });
 
-    if (!ffProcesses[cam.id]) ffProcesses[cam.id] = {};
-    ffProcesses[cam.id][streamType] = child;
-    sysLog('INFO', `[${cam.id}] Menjalankan stream ${streamType} (${isDemo ? 'Virtual Demo' : sourceUrl}) [${shouldTranscode ? 'Transcode H.264 ultrafast' : 'H.264 Passthrough copy'}]`);
+    ffProcesses[cam.id] = child;
+}
+
+function stopCameraRecording(camId) {
+    const timerKey = `rec_${camId}`;
+    if (reconnectTimers[timerKey]) {
+        clearTimeout(reconnectTimers[timerKey]);
+        delete reconnectTimers[timerKey];
+    }
+
+    if (ffProcesses[camId]) {
+        try {
+            ffProcesses[camId].killedByUser = true;
+            ffProcesses[camId].kill('SIGKILL');
+        } catch (e) {}
+        delete ffProcesses[camId];
+    }
 }
 
 function startAllStreams() {
+    // 1. Auto-generate konfigurasi MediaMTX & restart via PM2
+    syncMediaMtxConfig();
+
+    // 2. Bersihkan timer & proses rekaman lama
     Object.keys(reconnectTimers).forEach(key => {
         clearTimeout(reconnectTimers[key]);
         delete reconnectTimers[key];
     });
 
-    Object.values(ffProcesses).forEach(camProcs => {
-        if (camProcs.main) {
-            camProcs.main.killedByUser = true;
-            camProcs.main.kill('SIGKILL');
-        }
-        if (camProcs.sub) {
-            camProcs.sub.killedByUser = true;
-            camProcs.sub.kill('SIGKILL');
+    Object.values(ffProcesses).forEach(proc => {
+        if (proc) {
+            proc.killedByUser = true;
+            try { proc.kill('SIGKILL'); } catch (e) {}
         }
     });
     ffProcesses = {};
     ensureRecordFolders();
-    
+
+    // 3. Jalankan perekaman FFmpeg khusus kamera continuous
     cameras = getCameras();
     cameras.forEach(cam => {
-        if (cam.enabled) {
-            if (cam.mainStreamUrl) spawnFFmpeg(cam, 'main');
-            const hasDistinctSub = cam.subStreamUrl && cam.subStreamUrl.trim() && cam.subStreamUrl.trim() !== cam.mainStreamUrl.trim();
-            if (hasDistinctSub) spawnFFmpeg(cam, 'sub');
+        if (cam.enabled && cam.recordMode === 'continuous') {
+            spawnRecordingFFmpeg(cam);
         }
     });
 }
 
 function stopCamera(camId) {
-    ['main', 'sub'].forEach(type => {
-        const timerKey = `${camId}_${type}`;
-        if (reconnectTimers[timerKey]) {
-            clearTimeout(reconnectTimers[timerKey]);
-            delete reconnectTimers[timerKey];
-        }
-    });
-
-    if (ffProcesses[camId]) {
-        if (ffProcesses[camId].main) {
-            ffProcesses[camId].main.killedByUser = true;
-            ffProcesses[camId].main.kill('SIGKILL');
-        }
-        if (ffProcesses[camId].sub) {
-            ffProcesses[camId].sub.killedByUser = true;
-            ffProcesses[camId].sub.kill('SIGKILL');
-        }
-        delete ffProcesses[camId];
-    }
-
-    cleanStreamDir(camId, 'main');
-    cleanStreamDir(camId, 'sub');
-
-    if (cameraStatuses[camId]) {
-        cameraStatuses[camId].main = { status: 'offline', error: 'Dihentikan' };
-        cameraStatuses[camId].sub = { status: 'offline', error: 'Dihentikan' };
-    }
+    stopCameraRecording(camId);
+    syncMediaMtxConfig();
 }
 
 // Retention (Cleaning old files locally)
@@ -779,20 +712,24 @@ function checkGlobalDiskSpace() {
 // --- REST API ENDPOINTS ---
 
 app.get('/api/cameras', verifyToken, (req, res) => {
+    const currentSettings = getSettings();
     const cams = getCameras().map(c => {
+        const safeId = (c.id || '').replace(/[^a-zA-Z0-9_\-]/g, '_');
         const hasDistinctSub = c.subStreamUrl && c.subStreamUrl.trim() && c.subStreamUrl.trim() !== c.mainStreamUrl.trim();
-        const mainStat = (cameraStatuses[c.id] && cameraStatuses[c.id].main) || { status: c.enabled ? 'connecting' : 'offline', error: null };
-        const subStat = (cameraStatuses[c.id] && cameraStatuses[c.id].sub) || { status: c.enabled ? 'connecting' : 'offline', error: null };
+        const mainStat = (cameraStatuses[c.id] && cameraStatuses[c.id].main) || { status: c.enabled ? 'online' : 'offline', error: null };
+        const subStat = (cameraStatuses[c.id] && cameraStatuses[c.id].sub) || { status: c.enabled ? 'online' : 'offline', error: null };
         return {
             ...c,
+            mediaMtxPath: safeId,
+            mediaMtxSubPath: hasDistinctSub ? `${safeId}_sub` : safeId,
             mainHls: `/streams/${c.id}/main.m3u8`,
             subHls: hasDistinctSub ? `/streams/${c.id}/sub.m3u8` : `/streams/${c.id}/main.m3u8`,
-            status: mainStat.status,
+            status: c.enabled ? 'online' : 'offline',
             error: mainStat.error,
-            subStatus: subStat.status
+            subStatus: c.enabled ? 'online' : 'offline'
         };
     });
-    res.json({ cameras: cams });
+    res.json({ cameras: cams, mediamtxPort: currentSettings.mediamtxPort || 8889, mediamtxHost: currentSettings.mediamtxHost || '' });
 });
 
 app.post('/api/cameras', verifyToken, (req, res) => {
@@ -821,13 +758,14 @@ app.post('/api/cameras', verifyToken, (req, res) => {
     cams.push(newCam);
     saveCameras(cams);
     
-    if (newCam.enabled) {
-        if (newCam.mainStreamUrl) spawnFFmpeg(newCam, 'main');
-        const hasDistinctSub = newCam.subStreamUrl && newCam.subStreamUrl.trim() !== newCam.mainStreamUrl.trim();
-        if (hasDistinctSub) spawnFFmpeg(newCam, 'sub');
+    // Sinkronisasi MediaMTX otomatis
+    syncMediaMtxConfig();
+
+    if (newCam.enabled && newCam.recordMode === 'continuous') {
+        spawnRecordingFFmpeg(newCam);
     }
     
-    sysLog('INFO', `Kamera Ditambahkan: ${newCam.name}`);
+    sysLog('INFO', `Kamera Ditambahkan: ${newCam.name} (MediaMTX config updated)`);
     res.json({ success: true, camera: newCam });
 });
 
@@ -838,7 +776,7 @@ app.put('/api/cameras/:id', verifyToken, (req, res) => {
     
     const { name, enabled, mainStreamUrl, subStreamUrl, rtspUrl, storagePath, resolution, fps, recordMode, maxStorageDays, maxFolderSizeGB, segmentDurationSec, transcode } = req.body;
     
-    stopCamera(req.params.id);
+    stopCameraRecording(req.params.id);
 
     const rawMainUrl = mainStreamUrl !== undefined ? mainStreamUrl : (rtspUrl || cams[index].mainStreamUrl);
     const rawSubUrl = subStreamUrl !== undefined ? subStreamUrl : cams[index].subStreamUrl;
@@ -863,13 +801,14 @@ app.put('/api/cameras/:id', verifyToken, (req, res) => {
     
     saveCameras(cams);
 
-    if (cams[index].enabled) {
-        if (cams[index].mainStreamUrl) spawnFFmpeg(cams[index], 'main');
-        const hasDistinctSub = cams[index].subStreamUrl && cams[index].subStreamUrl.trim() !== cams[index].mainStreamUrl.trim();
-        if (hasDistinctSub) spawnFFmpeg(cams[index], 'sub');
+    // Sinkronisasi MediaMTX otomatis
+    syncMediaMtxConfig();
+
+    if (cams[index].enabled && cams[index].recordMode === 'continuous') {
+        spawnRecordingFFmpeg(cams[index]);
     }
 
-    sysLog('INFO', `Kamera Diperbarui: ${cams[index].name}`);
+    sysLog('INFO', `Kamera Diperbarui: ${cams[index].name} (MediaMTX config updated)`);
     res.json({ success: true });
 });
 
@@ -878,26 +817,30 @@ app.post('/api/cameras/:id/restart', verifyToken, (req, res) => {
     const cam = cams.find(c => c.id === req.params.id);
     if (!cam) return res.status(404).json({ error: 'Kamera tidak ditemukan' });
 
-    stopCamera(cam.id);
+    stopCameraRecording(cam.id);
+    syncMediaMtxConfig();
+
     setTimeout(() => {
-        if (cam.enabled) {
-            if (cam.mainStreamUrl) spawnFFmpeg(cam, 'main');
-            const hasDistinctSub = cam.subStreamUrl && cam.subStreamUrl.trim() !== cam.mainStreamUrl.trim();
-            if (hasDistinctSub) spawnFFmpeg(cam, 'sub');
+        if (cam.enabled && cam.recordMode === 'continuous') {
+            spawnRecordingFFmpeg(cam);
         }
-        res.json({ success: true, message: `Stream kamera ${cam.name} dimulai ulang.` });
+        res.json({ success: true, message: `Stream kamera ${cam.name} disinkronkan ke MediaMTX.` });
     }, 500);
 });
 
 app.delete('/api/cameras/:id', verifyToken, (req, res) => {
-    stopCamera(req.params.id);
+    stopCameraRecording(req.params.id);
     const camStreamDir = path.join(streamBaseDir, req.params.id);
     if (fs.existsSync(camStreamDir)) {
         try { fs.rmSync(camStreamDir, { recursive: true, force: true }); } catch (e) {}
     }
     const cams = getCameras().filter(c => c.id !== req.params.id);
     saveCameras(cams);
-    sysLog('INFO', `Kamera Dihapus: ${req.params.id}`);
+    
+    // Sinkronisasi MediaMTX otomatis setelah hapus kamera
+    syncMediaMtxConfig();
+
+    sysLog('INFO', `Kamera Dihapus: ${req.params.id} (MediaMTX config updated)`);
     res.json({ success: true });
 });
 
@@ -989,7 +932,9 @@ app.post('/api/settings', verifyToken, (req, res) => {
 
     settings = { ...settings, ...req.body };
     fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
-    sysLog('INFO', `Pengaturan Sistem Diperbarui (Storage: ${settings.globalStorageMode}, Recording Quality: ${settings.recordingQuality || 'main'})`);
+    sysLog('INFO', `Pengaturan Sistem Diperbarui (Storage: ${settings.globalStorageMode}, Recording Quality: ${settings.recordingQuality || 'main'}, MediaMTX Port: ${settings.mediamtxPort || 8889})`);
+
+    syncMediaMtxConfig();
 
     if (prevQuality !== settings.recordingQuality || prevStorageMode !== settings.globalStorageMode || prevStoragePath !== settings.globalStoragePath) {
         startAllStreams();
