@@ -477,12 +477,16 @@ function syncMediaMtxConfig() {
             if (mainUrl) {
                 lines.push(`  ${safeId}:`);
                 lines.push(`    source: "${mainUrl}"`);
+                lines.push(`    sourceProtocol: tcp`);
+                lines.push(`    sourceAnyPortEnable: yes`);
                 activeCount++;
             }
 
             if (subUrl && subUrl !== mainUrl) {
                 lines.push(`  ${safeId}_sub:`);
                 lines.push(`    source: "${subUrl}"`);
+                lines.push(`    sourceProtocol: tcp`);
+                lines.push(`    sourceAnyPortEnable: yes`);
                 activeCount++;
             }
         });

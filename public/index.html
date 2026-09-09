@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Archer_NVR - V8.3 Armbian System Monitor & Auto Storage</title>
+    <title>Archer_NVR - V8.4 Armbian System Monitor & Auto Storage</title>
     <meta name="description" content="NVR CCTV Backend with Node.js, Express, MediaMTX WebRTC live streaming, Armbian OS system monitor, and auto-detect USB/HDD storage for STB.">
-    <meta property="og:title" content="Archer_NVR - V8.3 Armbian System Monitor & Auto Storage">
+    <meta property="og:title" content="Archer_NVR - V8.4 Armbian System Monitor & Auto Storage">
     <meta property="og:description" content="NVR CCTV Backend with Node.js, Express, MediaMTX WebRTC live streaming, Armbian OS system monitor, and auto-detect USB/HDD storage for STB.">
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
@@ -16,9 +16,9 @@
         <div class="auth-card" id="authCard">
             <div class="brand" style="justify-content:center; border:none; padding-bottom:0.5rem;">
                 <span class="icon">🛡️</span>
-                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V8.3</span></h2>
+                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V8.4</span></h2>
             </div>
-            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v8.3 &bull; Armbian Hardware Monitor &bull; Auto-Detect Storage &bull; MediaMTX WebRTC</p>
+            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v8.4 &bull; Armbian Hardware Monitor &bull; Auto-Detect Storage &bull; MediaMTX WebRTC</p>
             <div class="auth-tabs" id="authTabs" style="display:none;">
                 <button type="button" class="auth-tab-btn" id="tabLoginBtn">Login</button>
                 <button type="button" class="auth-tab-btn" id="tabRegisterBtn">Daftar Akun Baru</button>
@@ -63,7 +63,7 @@
             <div class="brand">
                 <button id="btnToggleSidebar" class="btn-icon" title="Toggle Sidebar" style="margin-right:0.5rem; background:transparent; border:none; font-size:1.2rem; pointer-events:auto; display:none;">☰</button>
                 <span class="icon brand-text">🛡️</span>
-                <h2 class="brand-text">Archer_NVR <span class="badge">V8.3</span></h2>
+                <h2 class="brand-text">Archer_NVR <span class="badge">V8.4</span></h2>
             </div>
             
             <nav class="main-tabs">
@@ -126,6 +126,32 @@
                 <div class="menu-section">
                     <h3>SYSTEM LOGS</h3>
                     <button id="btnRefreshLogs" class="btn btn-secondary w-full" style="margin-top:0.5rem;">Refresh Logs</button>
+                </div>
+            </div>
+
+            <!-- SIDE SYSMONITOR -->
+            <div id="side-sysmonitor" class="side-panel">
+                <div class="menu-section">
+                    <h3>SYSTEM MONITOR</h3>
+                    <div class="sidebar-widget" id="sidebarSysWidget" style="margin-top: 1rem;">
+                        <h4 style="margin-bottom: 0.5rem; color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">System Info</h4>
+                        <div class="widget-row">
+                            <span>CPU & Suhu</span>
+                            <span id="sideCpuTemp">--% | --°C</span>
+                        </div>
+                        <div class="widget-row">
+                            <span>RAM Terpakai</span>
+                            <span id="sideRam">--%</span>
+                        </div>
+                        <div class="widget-row">
+                            <span>Storage (<span id="sideStorageIf">-</span>)</span>
+                            <span id="sideStorage">--%</span>
+                        </div>
+                        <div class="widget-row" style="border-bottom:none;">
+                            <span>Network (<span id="sideNetIf">eth0</span>)</span>
+                            <span id="sideNetStatus" style="color: #4ade80;">OK</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 

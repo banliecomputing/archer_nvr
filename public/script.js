@@ -263,6 +263,8 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (targetId === 'view-logs') {
                 document.getElementById('side-logs').classList.add('active');
                 fetchLogs();
+            } else if (targetId === 'view-sysmonitor') {
+                document.getElementById('side-sysmonitor').classList.add('active');
             }
             
             if (window.innerWidth <= 768) {
