@@ -396,7 +396,7 @@ function probeCodec(url) {
     return new Promise((resolve) => {
         if (!url || typeof url !== 'string') return resolve(null);
         if (url === 'demo') return resolve('h264');
-        const cmd = `ffprobe -v error -rtsp_transport tcp -analyzeduration 1000000 -probesize 1000000 -select_streams v:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "${url}"`;
+        const cmd = `ffprobe -v error -err_detect ignore_err -rtsp_transport tcp -analyzeduration 1000000 -probesize 1000000 -select_streams v:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "${url}"`;
         exec(cmd, { timeout: 3500 }, (err, stdout) => {
             if (err || !stdout) return resolve(null);
             const codec = stdout.trim().toLowerCase();
@@ -456,10 +456,15 @@ async function spawnFFmpeg(cam, streamType) {
 
     const shouldTranscode = isDemo || isHevc;
 
-    // 2. Optimasi Opsi Input & Output FFmpeg untuk HLS/Web Stream
+    // 2. Optimasi Opsi Input & Output FFmpeg untuk RTSP & HLS Stream
+    // Penanganan stream RTSP terputus akibat 'Non-monotonic DTS' dan 'NAL unit type not implemented':
+    // - -fflags +genpts+discardcorrupt (Paksa buat ulang timestamp rusak & buang packet/frame cacat)
+    // - -err_detect ignore_err (Abaikan error kecil pada header RTSP/RTP agar tidak langsung keluar)
     let inputArgs = [];
     if (isDemo) {
         inputArgs = [
+            '-err_detect', 'ignore_err',
+            '-fflags', '+genpts+discardcorrupt',
             '-f', 'lavfi', '-i', 'testsrc=size=1280x720:rate=25',
             '-f', 'lavfi', '-i', 'sine=frequency=1000:sample_rate=44100'
         ];
@@ -469,31 +474,42 @@ async function spawnFFmpeg(cam, streamType) {
             '-rtsp_transport', 'tcp',
             '-analyzeduration', '1000000',
             '-probesize', '1000000',
-            '-fflags', 'nobuffer+flush_packets',
+            '-err_detect', 'ignore_err',
+            '-fflags', '+genpts+discardcorrupt',
             '-flags', 'low_delay',
             '-i', sourceUrl
         ];
     }
 
-    // Video: jika H.265 gunakan libx264 ultrafast zerolatency; jika H.264 gunakan copy (0% CPU)
-    const videoArgs = shouldTranscode 
-        ? ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p'] 
-        : ['-c:v', 'copy'];
+    // Video: jika H.265 dan perlu transcode, gunakan libx264 ultrafast zerolatency.
+    // Jika H.264, tambahkan bitstream filter -bsf:v h264_mp4toannexb untuk menstabilkan struktur NAL unit sebelum ditulis ke HLS
+    let videoHlsArgs = [];
+    if (shouldTranscode) {
+        videoHlsArgs = ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p', '-bsf:v', 'h264_mp4toannexb'];
+    } else if (!isHevc) {
+        videoHlsArgs = ['-c:v', 'copy', '-bsf:v', 'h264_mp4toannexb'];
+    } else {
+        videoHlsArgs = ['-c:v', 'copy', '-bsf:v', 'hevc_mp4toannexb'];
+    }
 
     // Audio: konversi ke aac 44100Hz agar tidak error dekoder bawaan kamera, gunakan -map 0:a? jika tersedia
     const audioArgs = isDemo 
         ? ['-map', '1:a:0', '-c:a', 'aac', '-ar', '44100', '-b:a', '64k', '-ac', '1'] 
         : ['-map', '0:a?', '-c:a', 'aac', '-ar', '44100', '-b:a', '64k', '-ac', '1'];
 
-    // HLS Segmentasi Low-Latency (Minim Delay):
+    // HLS Segmentasi Low-Latency & Container Output Protection:
+    // -max_muxing_queue_size 1024 : mencegah overflow antrean muxing saat paket terlambat
+    // -avoid_negative_ts make_zero : otomatis sesuaikan timestamp melompat mulai dari nol secara konsisten
     // -hls_time 0.5, -hls_list_size 2, delete_segments+omit_endlist, no-cache
     let args = [
         '-y',
         '-loglevel', 'warning',
         ...inputArgs,
         '-map', '0:v:0',
-        ...videoArgs,
+        ...videoHlsArgs,
         ...audioArgs,
+        '-max_muxing_queue_size', '1024',
+        '-avoid_negative_ts', 'make_zero',
         '-f', 'hls',
         '-hls_time', '0.5',
         '-hls_list_size', '2',
@@ -520,6 +536,8 @@ async function spawnFFmpeg(cam, streamType) {
             '-map', isDemo ? '1:a:0' : '0:a?',
             '-c:a', 'aac',
             '-ar', '44100',
+            '-max_muxing_queue_size', '1024',
+            '-avoid_negative_ts', 'make_zero',
             '-f', 'segment',
             '-segment_time', segSec.toString(),
             '-segment_format', 'mp4',

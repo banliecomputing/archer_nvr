@@ -38,18 +38,25 @@ app.post('/api/start-stream', express.json(), (req, res) => {
 
   console.log(`[V1] Starting stream for: ${rtspUrl}`);
 
-  // FFmpeg arguments optimized for low CPU/RAM on Armbian STB
-  // -c:v copy : No video transcoding (very low CPU)
-  // -c:a copy : No audio transcoding
+  // FFmpeg arguments optimized for low CPU/RAM on Armbian STB & RTSP stabilization
+  // -fflags +genpts+discardcorrupt : paksa buat ulang timestamp rusak & buang packet cacat
+  // -err_detect ignore_err : abaikan error kecil header RTSP
+  // -bsf:v h264_mp4toannexb : stabilkan struktur NAL unit
+  // -max_muxing_queue_size 1024, -avoid_negative_ts make_zero : cegah overflow antrean & perbaiki non-monotonic DTS
   const args = [
-    '-rtsp_transport', 'tcp', // use TCP for better reliability
+    '-rtsp_transport', 'tcp',
+    '-err_detect', 'ignore_err',
+    '-fflags', '+genpts+discardcorrupt',
     '-i', rtspUrl,
-    '-c:v', 'copy', // Copy video codec directly (zero overhead)
-    '-c:a', 'copy', // Copy audio codec directly
+    '-c:v', 'copy',
+    '-bsf:v', 'h264_mp4toannexb',
+    '-c:a', 'copy',
+    '-max_muxing_queue_size', '1024',
+    '-avoid_negative_ts', 'make_zero',
     '-f', 'hls',
-    '-hls_time', '2', // 2 second segments for low latency
-    '-hls_list_size', '3', // Keep only 3 segments in playlist
-    '-hls_flags', 'delete_segments', // Delete old segments to save disk/RAM
+    '-hls_time', '2',
+    '-hls_list_size', '3',
+    '-hls_flags', 'delete_segments',
     path.join(streamDir, 'live.m3u8')
   ];
 
