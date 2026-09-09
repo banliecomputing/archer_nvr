@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Archer_NVR</title>
+    <meta name="description" content="NVR CCTV Backend with Node.js, Express, FFmpeg and HLS streaming for Armbian STB.">
+    <meta property="og:title" content="Archer_NVR">
+    <meta property="og:description" content="NVR CCTV Backend with Node.js, Express, FFmpeg and HLS streaming for Armbian STB.">
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+</head>
+<body>
+    <div id="authOverlay" class="auth-overlay">
+        <div class="auth-card" id="authCard">
+            <div class="brand" style="justify-content:center; border:none; padding-bottom:0.5rem;">
+                <span class="icon">🛡️</span>
+                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V7.3</span></h2>
+            </div>
+            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v7.3 &bull; H.265 Auto-Transcode &bull; Low-Latency HLS</p>
+            <h3 id="authTitle" style="text-align:center; margin-bottom:1.5rem;">Memuat...</h3>
+            
+            <form id="authForm" style="display:none;">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="authUsername" placeholder="Masukkan username" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="authPassword" placeholder="Masukkan password" required autocomplete="current-password">
+                        <button type="button" class="btn-peek-pwd" data-target="authPassword" title="Intip / Lihat Password" aria-label="Lihat Password">
+                            <span class="peek-icon">👁️</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group" id="authConfirmGroup" style="display:none;">
+                    <label>Konfirmasi Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="authPasswordConfirm" placeholder="Ketik ulang password" autocomplete="new-password">
+                        <button type="button" class="btn-peek-pwd" data-target="authPasswordConfirm" title="Intip / Lihat Password" aria-label="Lihat Password">
+                            <span class="peek-icon">👁️</span>
+                        </button>
+                    </div>
+                    <small class="form-help">Pastikan password cocok sebelum membuat akun.</small>
+                </div>
+                <button type="submit" class="btn btn-primary w-full" id="authSubmitBtn">Login</button>
+            </form>
+            <div id="authError" style="color:var(--accent); text-align:center; margin-top:1rem; font-size:0.85rem;"></div>
+        </div>
+    </div>
+
+    <div class="app-layout" id="mainApp" style="display:none;">
+        <div id="sidebarOverlay" class="sidebar-overlay"></div>
+        <!-- Sidebar Menu -->
+        <aside class="sidebar" id="sidebar">
+            <div class="brand">
+                <button id="btnToggleSidebar" class="btn-icon" title="Toggle Sidebar" style="margin-right:0.5rem; background:transparent; border:none; font-size:1.2rem; pointer-events:auto; display:none;">☰</button>
+                <span class="icon brand-text">🛡️</span>
+                <h2 class="brand-text">Archer_NVR <span class="badge">V7.3</span></h2>
+            </div>
+            
+            <nav class="main-tabs">
+                <button class="tab-btn active" data-target="view-live" title="Live View"><span class="tab-icon">👁️</span> <span class="tab-label">Live</span></button>
+                <button class="tab-btn" data-target="view-playback" title="Rekaman"><span class="tab-icon">📼</span> <span class="tab-label">Rekaman</span></button>
+                <button class="tab-btn" data-target="view-storage" title="Storage"><span class="tab-icon">💾</span> <span class="tab-label">Storage</span></button>
+                <button class="tab-btn" data-target="view-logs" title="System Logs"><span class="tab-icon">📋</span> <span class="tab-label">Logs</span></button>
+            </nav>
+
+            <div id="side-live" class="side-panel active">
+                <div class="menu-section">
+                    <h3>GRID LAYOUT</h3>
+                    <ul class="layout-options">
+                        <li><button class="layout-btn" data-grid="1"><span class="grid-icon">⏹</span> 1x1 (Single)</button></li>
+                        <li><button class="layout-btn active" data-grid="4"><span class="grid-icon">⊞</span> 2x2 (Quad)</button></li>
+                        <li><button class="layout-btn" data-grid="9"><span class="grid-icon">▦</span> 3x3 (Nine)</button></li>
+                        <li><button class="layout-btn" data-grid="16"><span class="grid-icon">⚏</span> 4x4 (Sixteen)</button></li>
+                    </ul>
+                </div>
+                <div class="menu-section">
+                    <h3>KAMERA TERSEDIA</h3>
+                    <ul id="cameraList" class="camera-list">
+                        <li><span class="pulse-dot"></span> Memuat kamera...</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div id="side-playback" class="side-panel">
+                <div class="menu-section">
+                    <h3>PILIH KAMERA</h3>
+                    <select id="selRecCam" class="sel-dark">
+                        <option>Memuat...</option>
+                    </select>
+                </div>
+                <div class="menu-section">
+                    <h3>TANGGAL REKAMAN</h3>
+                    <select id="selRecDate" class="sel-dark">
+                        <option>Pilih Kamera Dulu</option>
+                    </select>
+                </div>
+                <div class="menu-section">
+                    <h3>DAFTAR KLIP</h3>
+                    <ul id="playbackList" class="playback-list">
+                        <!-- List File MP4 -->
+                    </ul>
+                </div>
+            </div>
+
+            <!-- SIDE STORAGE -->
+            <div id="side-storage" class="side-panel">
+                <div class="menu-section">
+                    <h3>STORAGE MENU</h3>
+                    <p style="color:var(--text-muted); font-size:0.85rem; margin-top:0.5rem;">Atur preferensi penyimpanan global dan kelola media penyimpanan NVR Anda di panel utama.</p>
+                </div>
+            </div>
+
+            <!-- SIDE LOGS -->
+            <div id="side-logs" class="side-panel">
+                <div class="menu-section">
+                    <h3>SYSTEM LOGS</h3>
+                    <button id="btnRefreshLogs" class="btn btn-secondary w-full" style="margin-top:0.5rem;">Refresh Logs</button>
+                </div>
+            </div>
+
+            <div style="margin-top: auto; padding: 1rem;">
+                <button id="btnLogout" class="layout-btn" style="color:var(--accent); text-align:center; display:flex; justify-content:center;">
+                    <span class="grid-icon">🚪</span> Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="topbar">
+                <div class="top-status">
+                    <button id="btnMobileMenu" class="btn-mobile-menu" aria-label="Toggle Menu">☰</button>
+                    <div class="status-indicator">
+                        <div class="dot pulse"></div>
+                        <span>SISTEM NVR V7.3</span>
+                    </div>
+                    <div class="top-actions">
+                        <div class="clock" id="clock">00:00:00</div>
+                        <button id="btnSettings" class="btn-settings" title="Pengaturan Sistem">
+                            ⚙️ Pengaturan
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- LIVE VIEW -->
+            <div id="view-live" class="view-pane active">
+                <div class="grid-wrapper">
+                    <div id="videoGrid" class="video-grid grid-4"></div>
+                </div>
+            </div>
+
+            <!-- PLAYBACK VIEW -->
+            <div id="view-playback" class="view-pane">
+                <div class="playback-wrapper">
+                    <video id="playbackPlayer" controls playsinline></video>
+                    <div class="playback-info" style="margin-bottom:0; padding:1rem; display:flex; flex-direction:column; gap:1rem;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <h2 id="pbTitle" style="font-size:1rem; margin:0;">Pilih rekaman di sidebar kiri</h2>
+                            <div class="timeline-zoom">
+                                <button class="btn-sm z-btn" data-zoom="1">1h</button>
+                                <button class="btn-sm z-btn" data-zoom="6">6h</button>
+                                <button class="btn-sm z-btn active" data-zoom="24">24h</button>
+                            </div>
+                        </div>
+                        
+                        <div class="timeline-container" id="timelineContainer">
+                            <div class="timeline-scroll-area" id="timelineScrollArea">
+                                <div class="timeline-scale" id="timelineScale"></div>
+                                <div class="timeline-tracks" id="timelineTracks"></div>
+                                <div class="timeline-scrubber" id="timelineScrubber">
+                                    <div class="scrubber-head"></div>
+                                    <div class="scrubber-line"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STORAGE VIEW -->
+            <div id="view-storage" class="view-pane">
+                <div class="content-wrapper" style="max-width:800px; width:100%; margin:0 auto; padding: 2rem;">
+                    <h2>Pengaturan Storage & Rekaman</h2>
+                    <p style="color:var(--text-muted); margin-bottom:2rem;">Atur direktori utama tempat menyimpan rekaman video.</p>
+                    
+                    <form id="globalStorageForm" class="camera-form-section">
+                        <div class="form-group">
+                            <label for="globalStorageMode">Lokasi Penyimpanan Rekaman</label>
+                            <select id="globalStorageMode" class="form-control">
+                                <option value="disabled">Nonaktifkan Rekaman (Live View Only) [DEFAULT]</option>
+                                <option value="internal">SD Card / Internal STB (Tidak Direkomendasikan)</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-full mt-3">Simpan Preferensi Storage</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- LOGS VIEW -->
+            <div id="view-logs" class="view-pane">
+                <div class="content-wrapper" style="width:100%; height:100%; display:flex; flex-direction:column; padding: 1rem;">
+                    <h2 style="margin-bottom:1rem;">System Logs</h2>
+                    <div id="logsContainer" style="flex:1; background:#000; border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-y:auto; font-family:monospace; font-size:0.85rem; color:#a3be8c;">
+                        Memuat logs...
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Settings -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2>Pengaturan Sistem NVR</h2>
+                <button id="btnCloseSettings" class="close-btn">&times;</button>
+            </div>
+            
+            <div class="settings-tabs">
+                <button class="stab-btn active" data-target="stab-cameras">Manajemen Kamera</button>
+                <button class="stab-btn" data-target="stab-system">Sistem & Keamanan</button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Tab Kamera -->
+                <div id="stab-cameras" class="stab-pane active">
+                    <div class="camera-manager">
+                        <div id="modalCameraList" class="modal-camera-list"></div>
+                    </div>
+                    
+                    <div class="camera-form-section">
+                        <div class="cam-form-header">
+                            <h3 id="formTitle">Tambah / Edit Kamera</h3>
+                            <button type="button" id="btnCancelEdit" class="btn-sm btn-secondary" style="display:none;">Batalkan Edit</button>
+                        </div>
+
+                        <!-- Inner Tabs for Camera Form -->
+                        <div class="cam-inner-tabs">
+                            <button type="button" class="ctab-btn active" data-target="ctab-general">General</button>
+                            <button type="button" class="ctab-btn" data-target="ctab-streams">Streams</button>
+                            <button type="button" class="ctab-btn" data-target="ctab-storage">Storage & Recording</button>
+                        </div>
+
+                        <form id="cameraForm">
+                            <input type="hidden" id="camId">
+                            
+                            <!-- CTAB General -->
+                            <div id="ctab-general" class="ctab-pane active">
+                                <div class="form-group row-check">
+                                    <input type="checkbox" id="camEnabled" checked>
+                                    <label for="camEnabled">Aktifkan Kamera Ini</label>
+                                </div>
+                                <div class="form-group">
+                                    <label>Nama Kamera</label>
+                                    <input type="text" id="camName" placeholder="Contoh: Parkiran Depan" required>
+                                </div>
+                            </div>
+
+                            <!-- CTAB Streams -->
+                            <div id="ctab-streams" class="ctab-pane">
+                                <div class="form-group">
+                                    <label>Main Stream URL (RTSP Stream Utama)</label>
+                                    <input type="text" id="camMainUrl" placeholder="rtsp://admin:pass@192.168.1.5:554/live atau rtsp://192.168.1.5/ch0" required>
+                                    <small class="form-help">Mendukung format RTSP dengan atau tanpa username/password. Ketik <code>demo</code> untuk virtual camera simulasi.</small>
+                                </div>
+                                <div class="form-group">
+                                    <label>Sub Stream URL (RTSP Stream Rendah untuk Multi-Grid)</label>
+                                    <input type="text" id="camSubUrl" placeholder="rtsp://192.168.1.5/ch1 (opsional)">
+                                    <small class="form-help">Digunakan untuk tampilan multi-kamera agar hemat CPU & bandwidth. Kosongkan jika sama dengan Main.</small>
+                                </div>
+                                <div class="form-group">
+                                    <label>Mode Transcode Video (H.265 / HEVC & H.264)</label>
+                                    <select id="camTranscode" class="form-control">
+                                        <option value="auto">Deteksi Otomatis (Auto-Detect H.265 / H.264 - Rekomendasi)</option>
+                                        <option value="copy">Direct Passthrough (H.264 Kamera Bawaan - 0% CPU)</option>
+                                        <option value="transcode">Transcode H.264 Ultrafast (Paksa H.265 / HEVC -> H.264)</option>
+                                    </select>
+                                    <small class="form-help">Pilih "Deteksi Otomatis" agar backend mendeteksi H.265/H.264 secara cerdas. Jika kamera menggunakan H.265, otomatis di-transcode ke H.264 ultrafast agar dapat diputar lancar di browser.</small>
+                                </div>
+                            </div>
+
+                            <!-- CTAB Storage -->
+                            <div id="ctab-storage" class="ctab-pane">
+                                <div class="form-row">
+                                    <div class="form-group flex-1">
+                                        <label>Mode Rekam</label>
+                                        <select id="camRecordMode" class="form-control">
+                                            <option value="disabled">Disabled (Tidak Merekam)</option>
+                                            <option value="continuous">Continuous (Terus Menerus)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group flex-1">
+                                        <label>Durasi per File MP4 (Detik)</label>
+                                        <input type="number" id="camSegmentSec" value="900" min="60">
+                                        <small class="form-help">Default: 900 detik (15 menit).</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label>Path Folder Penyimpanan (Custom Path)</label>
+                                    <input type="text" id="camStoragePath" placeholder="Contoh: /mnt/storage/cam1">
+                                    <small class="form-help">Kosongkan untuk menggunakan folder bawaan aplikasi.</small>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group flex-1">
+                                        <label>Maksimal Umur File (Hari)</label>
+                                        <input type="number" id="camMaxDays" value="7" min="1">
+                                        <small class="form-help">Video terlama akan dihapus jika melewati batas ini.</small>
+                                    </div>
+                                    <div class="form-group flex-1">
+                                        <label>Maksimal Ukuran Folder (GB)</label>
+                                        <input type="number" id="camMaxGB" value="10" min="1" step="0.5">
+                                        <small class="form-help">Otomatis menghapus video lama jika memori hampir penuh.</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-actions mt-3">
+                                <button type="submit" class="btn btn-primary w-full">Simpan Kamera</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Tab System -->
+                <div id="stab-system" class="stab-pane">
+                    <form id="systemForm" style="margin-bottom: 2rem;">
+                        <h3 style="border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-bottom: 1rem;">Notifikasi Telegram</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Sistem akan mengirimkan pesan otomatis jika FFmpeg mendeteksi aliran RTSP terputus.</p>
+                        
+                        <div class="form-group">
+                            <label>Bot Token</label>
+                            <input type="text" id="sysTgBot">
+                        </div>
+                        <div class="form-group">
+                            <label>Chat ID</label>
+                            <input type="text" id="sysTgChat">
+                        </div>
+                        <div class="form-actions mt-3">
+                            <button type="submit" class="btn btn-primary">Simpan Notifikasi</button>
+                        </div>
+                    </form>
+
+                    <form id="changePasswordForm">
+                        <h3 style="border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-bottom: 1rem;">Keamanan Akun</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Ubah kata sandi untuk login NVR.</p>
+                        
+                        <div class="form-group">
+                            <label>Password Lama</label>
+                            <div class="password-wrapper">
+                                <input type="password" id="oldPassword" placeholder="Masukkan password saat ini" required autocomplete="current-password">
+                                <button type="button" class="btn-peek-pwd" data-target="oldPassword" title="Intip / Lihat Password" aria-label="Lihat Password">
+                                    <span class="peek-icon">👁️</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Password Baru</label>
+                            <div class="password-wrapper">
+                                <input type="password" id="newPassword" placeholder="Masukkan password baru" required autocomplete="new-password">
+                                <button type="button" class="btn-peek-pwd" data-target="newPassword" title="Intip / Lihat Password" aria-label="Lihat Password">
+                                    <span class="peek-icon">👁️</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-actions mt-3">
+                            <button type="submit" class="btn btn-primary">Ganti Password</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="script.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(err => {
+                console.log('Service Worker registration failed:', err);
+            });
+        }
+    </script>
+</body>
+</html>

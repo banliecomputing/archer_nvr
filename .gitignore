@@ -1,0 +1,9 @@
+node_modules/
+.env
+cameras.json
+settings.json
+data/
+public/recordings/
+public/streams/
+*.log
+nvr.db.json

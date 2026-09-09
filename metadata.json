@@ -1,0 +1,6 @@
+{
+  "name": "Archer_NVR",
+  "description": "NVR CCTV Backend with Node.js, Express, FFmpeg and HLS streaming for Armbian STB.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
