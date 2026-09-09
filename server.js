@@ -66,8 +66,15 @@ let cameraStatuses = {}; // camId -> { main: { status, error, lastUpdate }, sub:
 let settings = {};
 
 function getSettings() {
-    try { return JSON.parse(fs.readFileSync(settingsFile, 'utf8')); }
-    catch (e) { return { globalStorageMode: 'disabled', globalStoragePath: '' }; }
+    try { 
+        const s = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+        if (!s.recordingQuality) s.recordingQuality = 'main';
+        if (!s.globalStorageMode) s.globalStorageMode = 'disabled';
+        return s;
+    }
+    catch (e) { 
+        return { globalStorageMode: 'disabled', globalStoragePath: '', recordingQuality: 'main' }; 
+    }
 }
 function getCameras() {
     try { return JSON.parse(fs.readFileSync(dbFile, 'utf8')); }
@@ -358,9 +365,9 @@ function autoCleanupTempSegments() {
         if (!fs.existsSync(streamBaseDir)) return;
         const camDirs = fs.readdirSync(streamBaseDir);
         const now = Date.now();
-        // HLS segmen 1 detik dengan playlist 3 item (~3 detik active window).
-        // File segmen lebih dari 25 detik sudah aman dihapus dari disk.
-        const MAX_AGE_MS = 25 * 1000;
+        // HLS segmen 0.5 detik dengan playlist 2 item (~1 detik active window).
+        // File segmen lebih dari 15 detik sudah aman dihapus dari disk.
+        const MAX_AGE_MS = 15 * 1000;
 
         for (const dirName of camDirs) {
             const camDir = path.join(streamBaseDir, dirName);
@@ -457,12 +464,12 @@ async function spawnFFmpeg(cam, streamType) {
             '-f', 'lavfi', '-i', 'sine=frequency=1000:sample_rate=44100'
         ];
     } else {
-        // Opsi input RTSP TCP dengan buffer probesize & analyzeduration 1000000
+        // Opsi input RTSP TCP dengan buffer probesize & analyzeduration 1000000 serta low-latency flags
         inputArgs = [
             '-rtsp_transport', 'tcp',
             '-analyzeduration', '1000000',
             '-probesize', '1000000',
-            '-fflags', '+nobuffer+genpts+flush_packets',
+            '-fflags', 'nobuffer+flush_packets',
             '-flags', 'low_delay',
             '-i', sourceUrl
         ];
@@ -478,7 +485,8 @@ async function spawnFFmpeg(cam, streamType) {
         ? ['-map', '1:a:0', '-c:a', 'aac', '-ar', '44100', '-b:a', '64k', '-ac', '1'] 
         : ['-map', '0:a?', '-c:a', 'aac', '-ar', '44100', '-b:a', '64k', '-ac', '1'];
 
-    // HLS Segmentasi: durasi segmen 1s (-hls_time 1), list_size 3, delete_segments+omit_endlist
+    // HLS Segmentasi Low-Latency (Minim Delay):
+    // -hls_time 0.5, -hls_list_size 2, delete_segments+omit_endlist, no-cache
     let args = [
         '-y',
         '-loglevel', 'warning',
@@ -487,8 +495,8 @@ async function spawnFFmpeg(cam, streamType) {
         ...videoArgs,
         ...audioArgs,
         '-f', 'hls',
-        '-hls_time', '1',
-        '-hls_list_size', '3',
+        '-hls_time', '0.5',
+        '-hls_list_size', '2',
         '-hls_flags', 'delete_segments+omit_endlist',
         '-hls_allow_cache', '0',
         '-hls_segment_filename', segmentFilename,
@@ -496,13 +504,19 @@ async function spawnFFmpeg(cam, streamType) {
     ];
 
     const isGlobalRecordingDisabled = settings.globalStorageMode === 'disabled';
+    const recQuality = settings.recordingQuality || 'main';
+    const hasDistinctSub = cam.subStreamUrl && cam.subStreamUrl.trim() && cam.subStreamUrl.trim() !== cam.mainStreamUrl.trim();
+    // Pilihan kualitas rekaman global:
+    // 'main': High Quality (Main Stream HD) [Rekomendasi untuk Bukti Rekaman]
+    // 'sub': Low Quality (Sub Stream SD) [Hemat Penyimpanan]
+    const targetRecStream = (recQuality === 'sub' && hasDistinctSub) ? 'sub' : 'main';
 
-    if (isMain && cam.recordMode === 'continuous' && !isGlobalRecordingDisabled) {
+    if (streamType === targetRecStream && cam.recordMode === 'continuous' && !isGlobalRecordingDisabled) {
         const recBase = resolveStoragePath(cam.storagePath || path.join(getActualBaseStoragePath(), cam.id));
         const segSec = cam.segmentDurationSec || 900;
         args.push(
             '-map', '0:v:0',
-            ...(shouldTranscode ? ['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p'] : ['-c:v', 'copy']),
+            ...(shouldTranscode ? ['-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p'] : ['-c:v', 'copy']),
             '-map', isDemo ? '1:a:0' : '0:a?',
             '-c:a', 'aac',
             '-ar', '44100',
@@ -513,6 +527,7 @@ async function spawnFFmpeg(cam, streamType) {
             '-strftime', '1',
             path.join(recBase, '%Y-%m-%d', '%H-%M-%S.mp4')
         );
+        sysLog('INFO', `[${cam.id}] Perekaman kontinyu aktif pada stream ${streamType.toUpperCase()} (Kualitas: ${recQuality === 'sub' ? 'Sub Stream SD' : 'Main Stream HD'})`);
     }
 
     let lastStderr = '';
@@ -950,10 +965,18 @@ app.get('/api/logs', verifyToken, (req, res) => {
 });
 
 app.post('/api/settings', verifyToken, (req, res) => {
+    const prevQuality = settings.recordingQuality;
+    const prevStorageMode = settings.globalStorageMode;
+    const prevStoragePath = settings.globalStoragePath;
+
     settings = { ...settings, ...req.body };
     fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
-    sysLog('INFO', 'Pengaturan Sistem Diperbarui');
-    res.json({ success: true });
+    sysLog('INFO', `Pengaturan Sistem Diperbarui (Storage: ${settings.globalStorageMode}, Recording Quality: ${settings.recordingQuality || 'main'})`);
+
+    if (prevQuality !== settings.recordingQuality || prevStorageMode !== settings.globalStorageMode || prevStoragePath !== settings.globalStoragePath) {
+        startAllStreams();
+    }
+    res.json({ success: true, settings });
 });
 
 // Streams Middleware with HLS Cache-Control & CORS
@@ -987,7 +1010,7 @@ function boot() {
     setInterval(syncRecordingsToDB, 5 * 60 * 1000); // 5 mins
     setInterval(runRetention, 10 * 60 * 1000); // 10 mins
     setInterval(checkGlobalDiskSpace, 60 * 60 * 1000); // 1 hour
-    setInterval(autoCleanupTempSegments, 15 * 1000); // 15 detik auto-cleanup segmen temp .ts
+    setInterval(autoCleanupTempSegments, 10 * 1000); // 10 detik auto-cleanup segmen temp .ts
 
     app.listen(port, "0.0.0.0", () => {
         sysLog('INFO', `NVR Backend berjalan di port ${port}`);

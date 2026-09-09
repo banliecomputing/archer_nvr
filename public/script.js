@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Data State
     let cameras = [];
     let hlsInstances = {}; 
+    let liveSyncTimers = {};
     let currentGridCount = 4;
     let recordingsMap = {}; // { 'cam_1': { '2023-10-01': ['15-30-00.mp4'] } }
 
@@ -289,6 +290,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 selectEl.value = currentSettings.globalStoragePath;
             }
 
+            const recQuality = currentSettings.recordingQuality || 'main';
+            const globRecEl = document.getElementById('globalRecordingQuality');
+            if (globRecEl) globRecEl.value = recQuality;
+            const sysRecEl = document.getElementById('sysRecordingQuality');
+            if (sysRecEl) sysRecEl.value = recQuality;
+
         } catch (e) {
             console.error('Failed to fetch storage options:', e);
         }
@@ -299,9 +306,11 @@ document.addEventListener('DOMContentLoaded', () => {
         globalStorageForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const val = document.getElementById('globalStorageMode').value;
+            const recQ = document.getElementById('globalRecordingQuality')?.value || 'main';
             const payload = {
                 globalStorageMode: val === 'disabled' ? 'disabled' : 'enabled',
-                globalStoragePath: val === 'disabled' ? '' : val
+                globalStoragePath: val === 'disabled' ? '' : val,
+                recordingQuality: recQ
             };
             try {
                 await fetch('/api/settings', {
@@ -309,8 +318,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(payload)
                 });
-                alert('Preferensi Storage Berhasil Disimpan! Sistem akan menerapkan konfigurasi baru.');
-                // Optionally restart ffmpeg streams by calling an API or just reload
+                const sysRecEl = document.getElementById('sysRecordingQuality');
+                if (sysRecEl) sysRecEl.value = recQ;
+
+                alert('Preferensi Storage & Kualitas Rekaman Berhasil Disimpan!');
             } catch(e) {
                 alert('Gagal menyimpan preferensi storage.');
             }
@@ -367,6 +378,9 @@ document.addEventListener('DOMContentLoaded', () => {
             try { hls.destroy(); } catch (e) {}
         });
         hlsInstances = {};
+        Object.values(liveSyncTimers).forEach(t => clearInterval(t));
+        liveSyncTimers = {};
+
         videoGrid.innerHTML = '';
         videoGrid.className = `video-grid grid-${count}`;
 
@@ -402,9 +416,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="cam-info">
                             <span class="pulse-dot" id="dot-${cam.id}"></span>
                             <span class="cam-name">${cam.name}</span>
-                            <span class="cam-stream-tag" id="tag-${cam.id}">${initialStreamType.toUpperCase()}</span>
+                            <span class="cam-stream-tag" id="tag-${cam.id}">${initialStreamType === 'main' ? 'HD' : 'SD'}</span>
                         </div>
                         <div class="cam-controls">
+                            <!-- Live View Selector (YouTube Style) -->
+                            <div class="cam-quality-picker">
+                                <select class="quality-select" id="quality-${cam.id}" onchange="changeCameraQuality('${cam.id}', this.value, '${cell.id}')" title="Pilih Kualitas Stream (Live View)">
+                                    <option value="main" ${initialStreamType === 'main' ? 'selected' : ''}>HD / Main</option>
+                                    <option value="sub" ${initialStreamType === 'sub' ? 'selected' : ''}>SD / Sub</option>
+                                </select>
+                            </div>
                             <button class="btn-icon" onclick="retryStream('${cam.id}')" title="Restart Stream">🔄</button>
                             <button class="btn-icon" onclick="toggleFullscreen('${cam.id}', 'cell-${i}')" title="Fullscreen (Main Stream)">⛶</button>
                         </div>
@@ -429,6 +450,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    window.changeCameraQuality = function(camId, targetType, cellId) {
+        const cell = document.getElementById(cellId) || document.querySelector(`.cam-cell[data-cam-id="${camId}"]`);
+        if (!cell) return;
+        const cam = cameras.find(c => c.id === camId);
+        if (!cam) return;
+
+        const targetUrl = targetType === 'main' ? cam.mainHls : (cam.subHls || cam.mainHls);
+        cell.dataset.streamType = targetType;
+        
+        const tag = cell.querySelector(`#tag-${camId}`);
+        if (tag) tag.textContent = targetType === 'main' ? 'HD' : 'SD';
+
+        const qSelect = cell.querySelector(`#quality-${camId}`);
+        if (qSelect && qSelect.value !== targetType) {
+            qSelect.value = targetType;
+        }
+
+        console.log(`[Stream Switch] Kamera ${cam.name} beralih ke stream ${targetType.toUpperCase()}`);
+        initHlsPlayer(camId, targetUrl, cell, 0);
+    };
+
     window.toggleFullscreen = function(camId, cellId) {
         const cell = document.getElementById(cellId);
         if (!cell) return;
@@ -446,9 +488,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentType = cell.dataset.streamType;
         
         if ((isFull && currentType !== 'main') || (!isFull && currentType !== 'sub')) {
-            cell.dataset.streamType = isFull ? 'main' : 'sub';
+            const nextType = isFull ? 'main' : 'sub';
+            cell.dataset.streamType = nextType;
             const tag = cell.querySelector(`#tag-${camId}`);
-            if (tag) tag.textContent = isFull ? 'MAIN' : 'SUB';
+            if (tag) tag.textContent = nextType === 'main' ? 'HD' : 'SD';
+            const qSelect = cell.querySelector(`#quality-${camId}`);
+            if (qSelect) qSelect.value = nextType;
             initHlsPlayer(camId, targetUrl, cell, 0);
         }
     }
@@ -517,7 +562,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.log(`[HLS] Sub stream not available for ${camId}, falling back to Main stream`);
                     cellElement.dataset.streamType = 'main';
                     const tag = cellElement.querySelector(`#tag-${camId}`);
-                    if (tag) tag.textContent = 'MAIN';
+                    if (tag) tag.textContent = 'HD';
+                    const qSelect = cellElement.querySelector(`#quality-${camId}`);
+                    if (qSelect) qSelect.value = 'main';
                     initHlsPlayer(camId, cam.mainHls, cellElement, 0);
                     return;
                 }
@@ -530,12 +577,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (Hls.isSupported()) {
             const hls = new Hls({
-                liveSyncDuration: 2,
-                liveMaxLatencyDuration: 6,
-                maxBufferLength: 6,
+                liveSyncDurationCount: 1,
+                liveMaxLatencyDurationCount: 2,
+                maxBufferLength: 2,
+                maxMaxBufferLength: 4,
                 enableWorker: true,
                 lowLatencyMode: true,
-                backBufferLength: 0
+                backBufferLength: 0,
+                liveDurationInfinity: true,
+                highBufferWatchdogPeriod: 1
             });
 
             hls.loadSource(streamUrl);
@@ -549,9 +599,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 setOverlayState('hidden');
             };
 
+            // Watchdog Low-Latency Live Edge: Lompat ke live edge jika video tertinggal > 2 detik
+            if (liveSyncTimers[camId]) {
+                clearInterval(liveSyncTimers[camId]);
+                delete liveSyncTimers[camId];
+            }
+            liveSyncTimers[camId] = setInterval(() => {
+                if (!videoEl || videoEl.paused || !videoEl.buffered || videoEl.buffered.length === 0) return;
+                try {
+                    const liveEdge = videoEl.buffered.end(videoEl.buffered.length - 1);
+                    const lag = liveEdge - videoEl.currentTime;
+                    if (lag > 2) {
+                        videoEl.currentTime = Math.max(0, liveEdge - 0.1);
+                    }
+                } catch (e) {}
+            }, 1000);
+
             hls.on(Hls.Events.ERROR, (event, data) => {
                 if (data.fatal) {
                     console.warn(`[HLS Error] ${camId}:`, data.type, data.details);
+                    if (liveSyncTimers[camId]) {
+                        clearInterval(liveSyncTimers[camId]);
+                        delete liveSyncTimers[camId];
+                    }
                     switch (data.type) {
                         case Hls.ErrorTypes.NETWORK_ERROR:
                             setOverlayState('loading', 'Menyambung ulang...', 'Gangguan jaringan HLS');
@@ -582,6 +652,22 @@ document.addEventListener('DOMContentLoaded', () => {
             videoEl.onplaying = () => {
                 setOverlayState('hidden');
             };
+
+            // Watchdog Live Edge untuk Safari Native
+            if (liveSyncTimers[camId]) {
+                clearInterval(liveSyncTimers[camId]);
+                delete liveSyncTimers[camId];
+            }
+            liveSyncTimers[camId] = setInterval(() => {
+                if (!videoEl || videoEl.paused || !videoEl.buffered || videoEl.buffered.length === 0) return;
+                try {
+                    const liveEdge = videoEl.buffered.end(videoEl.buffered.length - 1);
+                    const lag = liveEdge - videoEl.currentTime;
+                    if (lag > 2) {
+                        videoEl.currentTime = Math.max(0, liveEdge - 0.1);
+                    }
+                } catch (e) {}
+            }, 1000);
         }
     }
 
@@ -919,12 +1005,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             document.getElementById('sysTgBot').value = data.telegramBotToken || '';
             document.getElementById('sysTgChat').value = data.telegramChatId || '';
+            
+            const recQ = data.recordingQuality || 'main';
+            const sysRecEl = document.getElementById('sysRecordingQuality');
+            if (sysRecEl) sysRecEl.value = recQ;
+            const globRecEl = document.getElementById('globalRecordingQuality');
+            if (globRecEl) globRecEl.value = recQ;
         } catch(e) {}
     }
 
     document.getElementById('systemForm').addEventListener('submit', async (e) => {
         e.preventDefault();
+        const recQ = document.getElementById('sysRecordingQuality')?.value || 'main';
         const payload = {
+            recordingQuality: recQ,
             telegramBotToken: document.getElementById('sysTgBot').value,
             telegramChatId: document.getElementById('sysTgChat').value
         };
@@ -933,7 +1027,10 @@ document.addEventListener('DOMContentLoaded', () => {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
         });
-        alert('Pengaturan Sistem disimpan');
+        const globRecEl = document.getElementById('globalRecordingQuality');
+        if (globRecEl) globRecEl.value = recQ;
+
+        alert('Pengaturan Sistem & Kualitas Rekaman berhasil disimpan');
     });
 
     const changePasswordForm = document.getElementById('changePasswordForm');

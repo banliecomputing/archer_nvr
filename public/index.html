@@ -16,9 +16,9 @@
         <div class="auth-card" id="authCard">
             <div class="brand" style="justify-content:center; border:none; padding-bottom:0.5rem;">
                 <span class="icon">🛡️</span>
-                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V7.3</span></h2>
+                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V7.4</span></h2>
             </div>
-            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v7.3 &bull; H.265 Auto-Transcode &bull; Low-Latency HLS</p>
+            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">NVR Engine v7.4 &bull; Low-Latency HLS &bull; Dual-Stream HD/SD</p>
             <h3 id="authTitle" style="text-align:center; margin-bottom:1.5rem;">Memuat...</h3>
             
             <form id="authForm" style="display:none;">
@@ -58,7 +58,7 @@
             <div class="brand">
                 <button id="btnToggleSidebar" class="btn-icon" title="Toggle Sidebar" style="margin-right:0.5rem; background:transparent; border:none; font-size:1.2rem; pointer-events:auto; display:none;">☰</button>
                 <span class="icon brand-text">🛡️</span>
-                <h2 class="brand-text">Archer_NVR <span class="badge">V7.3</span></h2>
+                <h2 class="brand-text">Archer_NVR <span class="badge">V7.4</span></h2>
             </div>
             
             <nav class="main-tabs">
@@ -137,7 +137,7 @@
                     <button id="btnMobileMenu" class="btn-mobile-menu" aria-label="Toggle Menu">☰</button>
                     <div class="status-indicator">
                         <div class="dot pulse"></div>
-                        <span>SISTEM NVR V7.3</span>
+                        <span>SISTEM NVR V7.4</span>
                     </div>
                     <div class="top-actions">
                         <div class="clock" id="clock">00:00:00</div>
@@ -196,6 +196,14 @@
                                 <option value="disabled">Nonaktifkan Rekaman (Live View Only) [DEFAULT]</option>
                                 <option value="internal">SD Card / Internal STB (Tidak Direkomendasikan)</option>
                             </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="globalRecordingQuality">Kualitas Rekaman Video (Resolusi Penyimpanan)</label>
+                            <select id="globalRecordingQuality" class="form-control">
+                                <option value="main">High Quality (Main Stream HD) [Rekomendasi untuk Bukti Rekaman]</option>
+                                <option value="sub">Low Quality (Sub Stream SD) [Hemat Penyimpanan]</option>
+                            </select>
+                            <small class="form-help">Pilih stream kamera yang akan disimpan ke disk. Main Stream HD memberikan rekaman berkualitas tinggi untuk barang bukti, sedangkan Sub Stream SD menghemat kapasitas USB/SD Card hingga 70%.</small>
                         </div>
                         <button type="submit" class="btn btn-primary w-full mt-3">Simpan Preferensi Storage</button>
                     </form>
@@ -332,7 +340,18 @@
                 <!-- Tab System -->
                 <div id="stab-system" class="stab-pane">
                     <form id="systemForm" style="margin-bottom: 2rem;">
-                        <h3 style="border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-bottom: 1rem;">Notifikasi Telegram</h3>
+                        <h3 style="border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin-bottom: 1rem;">Pengaturan Rekaman & Notifikasi</h3>
+                        
+                        <div class="form-group">
+                            <label for="sysRecordingQuality">Kualitas Rekaman Video Global (Resolusi Simpan Disk)</label>
+                            <select id="sysRecordingQuality" class="form-control">
+                                <option value="main">High Quality (Main Stream HD) [Rekomendasi untuk Bukti Rekaman]</option>
+                                <option value="sub">Low Quality (Sub Stream SD) [Hemat Penyimpanan]</option>
+                            </select>
+                            <small class="form-help">Pilih resolusi video stream yang disimpan ke USB/SD Card.</small>
+                        </div>
+
+                        <h4 style="font-size:0.95rem; color:#e2e8f0; margin-top:1.5rem; margin-bottom:0.5rem;">Notifikasi Telegram</h4>
                         <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Sistem akan mengirimkan pesan otomatis jika FFmpeg mendeteksi aliran RTSP terputus.</p>
                         
                         <div class="form-group">
@@ -344,7 +363,7 @@
                             <input type="text" id="sysTgChat">
                         </div>
                         <div class="form-actions mt-3">
-                            <button type="submit" class="btn btn-primary">Simpan Notifikasi</button>
+                            <button type="submit" class="btn btn-primary">Simpan Pengaturan Sistem</button>
                         </div>
                     </form>
 
