@@ -98,46 +98,46 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
                 if (authTabs) authTabs.style.display = 'flex';
                 if (tabLoginBtn) tabLoginBtn.style.display = 'none'; // Only allow register
                 if (tabRegisterBtn) {
-                    tabRegisterBtn.classList.add('active');
-                    tabRegisterBtn.style.display = 'block';
+                    if (tabRegisterBtn) tabRegisterBtn.classList.add('active');
+                    if (tabRegisterBtn) tabRegisterBtn.style.display = 'block';
                 }
                 
-                authTitle.style.display = 'block';
-                authTitle.textContent = 'Registrasi Admin Pertama';
-                authSubmitBtn.textContent = 'Buat Akun & Login';
+                if (authTitle) authTitle.style.display = 'block';
+                if (authTitle) authTitle.textContent = 'Registrasi Admin Pertama';
+                if (authSubmitBtn) authSubmitBtn.textContent = 'Buat Akun & Login';
                 if (confirmGroup) confirmGroup.style.display = 'block';
-                authForm.style.display = 'block';
-                authOverlay.style.display = 'flex';
-                mainApp.style.display = 'none';
+                if (authForm) authForm.style.display = 'block';
+                if (authOverlay) authOverlay.style.display = 'flex';
+                if (mainApp) mainApp.style.display = 'none';
                 initPasswordPeeks();
             } else if (!data.authenticated) {
                 isSetupMode = false;
                 if (authTabs) authTabs.style.display = 'flex';
                 if (tabRegisterBtn) tabRegisterBtn.style.display = 'none'; // Only allow login if already set up
                 if (tabLoginBtn) {
-                    tabLoginBtn.classList.add('active');
-                    tabLoginBtn.style.display = 'block';
+                    if (tabLoginBtn) tabLoginBtn.classList.add('active');
+                    if (tabLoginBtn) tabLoginBtn.style.display = 'block';
                 }
                 
-                authTitle.style.display = 'block';
-                authTitle.textContent = 'Login NVR';
-                authSubmitBtn.textContent = 'Login';
+                if (authTitle) authTitle.style.display = 'block';
+                if (authTitle) authTitle.textContent = 'Login NVR';
+                if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
                 if (confirmGroup) confirmGroup.style.display = 'none';
-                authForm.style.display = 'block';
-                authOverlay.style.display = 'flex';
-                mainApp.style.display = 'none';
+                if (authForm) authForm.style.display = 'block';
+                if (authOverlay) authOverlay.style.display = 'flex';
+                if (mainApp) mainApp.style.display = 'none';
                 initPasswordPeeks();
             } else {
                 // Authenticated
-                authOverlay.style.display = 'none';
-                mainApp.style.display = 'flex';
+                if (authOverlay) authOverlay.style.display = 'none';
+                if (mainApp) mainApp.style.display = 'flex';
                 const lblUsername = document.getElementById('lblUsername');
-                if(lblUsername) lblUsername.textContent = data.username || 'Admin';
+                if (lblUsername) lblUsername.textContent = data.username || 'Admin';
                 initializeApp();
             }
         } catch(e) {
-            authTitle.style.display = 'block';
-            authTitle.textContent = 'Koneksi ke server gagal.';
+            if (authTitle) authTitle.style.display = 'block';
+            if (authTitle) authTitle.textContent = 'Koneksi ke server gagal.';
         }
     }
 
@@ -150,17 +150,17 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         if (isSetupMode && confirmInput) {
             const confirmVal = confirmInput.value;
             if (password !== confirmVal) {
-                authError.textContent = 'Password dan konfirmasi password tidak sama!';
+                if (authError) authError.textContent = 'Password dan konfirmasi password tidak sama!';
                 return;
             }
             if (password.length < 4) {
-                authError.textContent = 'Password minimal 4 karakter!';
+                if (authError) authError.textContent = 'Password minimal 4 karakter!';
                 return;
             }
         }
 
         const endpoint = isSetupMode ? '/api/auth/setup' : '/api/auth/login';
-        authError.textContent = '';
+        if (authError) authError.textContent = '';
         
         try {
             const res = await fetch(endpoint, {
@@ -171,14 +171,14 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json();
             
             if (res.ok && data.success) {
-                authOverlay.style.display = 'none';
-                mainApp.style.display = 'flex';
+                if (authOverlay) authOverlay.style.display = 'none';
+                if (mainApp) mainApp.style.display = 'flex';
                 initializeApp();
             } else {
-                authError.textContent = data.error || 'Login gagal';
+                if (authError) authError.textContent = data.error || 'Login gagal';
             }
         } catch(e) {
-            authError.textContent = 'Terjadi kesalahan sistem.';
+            if (authError) authError.textContent = 'Terjadi kesalahan sistem.';
         }
     });
 
@@ -217,19 +217,19 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         if(btnMobileMenu) btnMobileMenu.addEventListener('click', () => {
             if (window.innerWidth <= 768) {
                 // Mobile behavior: slide in/out
-                sidebar.classList.toggle('open');
-                sidebarOverlay.classList.toggle('active');
+                if (sidebar) sidebar.classList.toggle('open');
+                if (sidebarOverlay) sidebarOverlay.classList.toggle('active');
             } else {
                 // Desktop behavior: collapse sidebar
-                sidebar.classList.toggle('collapsed');
+                if (sidebar) sidebar.classList.toggle('collapsed');
             }
         });
     }
     
     function closeMobileMenu() {
         if (window.innerWidth <= 768) {
-            sidebar.classList.remove('open');
-            sidebarOverlay.classList.remove('active');
+            if (sidebar) sidebar.classList.remove('open');
+            if (sidebarOverlay) sidebarOverlay.classList.remove('active');
         }
     }
 
@@ -240,7 +240,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
     // --- Manajemen Waktu ---
     setInterval(() => {
         const now = new Date();
-        clockEl.textContent = now.toLocaleTimeString('id-ID', { hour12: false });
+        if (clockEl) clockEl.textContent = now.toLocaleTimeString('id-ID', { hour12: false });
     }, 1000);
 
     /* OLD TAB NAV REMOVED */
@@ -252,15 +252,15 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
 
     if(btnMobileMenu) {
         if(btnMobileMenu) btnMobileMenu.addEventListener('click', () => {
-            sidebar.classList.add('mobile-open');
-            sidebarOverlay.classList.add('active');
+            if (sidebar) sidebar.classList.add('mobile-open');
+            if (sidebarOverlay) sidebarOverlay.classList.add('active');
         });
     }
 
     if(sidebarOverlay) {
         if(sidebarOverlay) sidebarOverlay.addEventListener('click', () => {
-            sidebar.classList.remove('mobile-open');
-            sidebarOverlay.classList.remove('active');
+            if (sidebar) sidebar.classList.remove('mobile-open');
+            if (sidebarOverlay) sidebarOverlay.classList.remove('active');
         });
     }
 
@@ -288,8 +288,8 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
             if (targetId === 'view-setting-cameras') fetchCameras(); // or renderModalList if we keep the same logic
 
             if (window.innerWidth <= 768) {
-                sidebar.classList.remove('mobile-open');
-                sidebarOverlay.classList.remove('active');
+                if (sidebar) sidebar.classList.remove('mobile-open');
+                if (sidebarOverlay) sidebarOverlay.classList.remove('active');
             }
         });
     });
@@ -306,12 +306,12 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch('/api/logs'); // Need to implement this in server.js
             const data = await res.json();
-            logsContainer.innerHTML = data.logs.map(log => 
+            if (logsContainer) logsContainer.innerHTML = data.logs.map(log => 
                 `<div><span style="color:#8fbcbb;">[${log.timestamp}]</span> <span style="color:${log.level === 'ERROR' ? '#bf616a' : log.level === 'WARN' ? '#ebcb8b' : '#a3be8c'}">[${log.level}]</span> ${log.message}</div>`
             ).join('');
-            logsContainer.scrollTop = logsContainer.scrollHeight;
+            if (logsContainer) logsContainer.scrollTop = logsContainer.scrollHeight;
         } catch(e) {
-            logsContainer.innerHTML = 'Gagal memuat log sistem.';
+            if (logsContainer) logsContainer.innerHTML = 'Gagal memuat log sistem.';
         }
     }
 
@@ -322,13 +322,13 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
             const options = await resOpt.json();
             
             const selectEl = document.getElementById('globalStorageMode');
-            selectEl.innerHTML = '';
+            if (selectEl) selectEl.innerHTML = '';
             
             options.forEach(opt => {
                 const optionEl = document.createElement('option');
-                optionEl.value = opt.id === 'disabled' ? 'disabled' : opt.path;
-                optionEl.textContent = opt.label;
-                selectEl.appendChild(optionEl);
+                if (optionEl) optionEl.value = opt.id === 'disabled' ? 'disabled' : opt.path;
+                if (optionEl) optionEl.textContent = opt.label;
+                if (selectEl) selectEl.appendChild(optionEl);
             });
             
             // fetch current global settings
@@ -336,9 +336,9 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
             const currentSettings = await resSet.json();
             
             if (currentSettings.globalStorageMode === 'disabled') {
-                selectEl.value = 'disabled';
+                if (selectEl) selectEl.value = 'disabled';
             } else if (currentSettings.globalStoragePath) {
-                selectEl.value = currentSettings.globalStoragePath;
+                if (selectEl) selectEl.value = currentSettings.globalStoragePath;
             }
 
             const recQuality = currentSettings.recordingQuality || 'main';
@@ -404,19 +404,19 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         const menuCameraList = document.getElementById('menuCameraList');
         
         let activeCount = cameras.filter(c => c.enabled).length;
-        if(lblActiveCams) lblActiveCams.textContent = `${activeCount} Kamera Aktif`;
+        if (lblActiveCams) lblActiveCams.textContent = `${activeCount} Kamera Aktif`;
 
         if (menuCameraList) {
-            menuCameraList.innerHTML = '';
+            if (menuCameraList) menuCameraList.innerHTML = '';
             if (cameras.length === 0) {
-                menuCameraList.innerHTML = '<span style="padding: 0.5rem 1.5rem 0.5rem 3rem; color:var(--text-muted); font-size:0.8rem; display:block;">Belum ada kamera</span>';
+                if (menuCameraList) menuCameraList.innerHTML = '<span style="padding: 0.5rem 1.5rem 0.5rem 3rem; color:var(--text-muted); font-size:0.8rem; display:block;">Belum ada kamera</span>';
                 return;
             }
             cameras.forEach(cam => {
                 const a = document.createElement('a');
                 a.href = '#';
                 a.className = 'nav-subitem';
-                a.innerHTML = `<span style="color:${cam.enabled ? 'var(--success)' : 'var(--accent)'}; margin-right:5px;">●</span> ${cam.name}`;
+                if (a) a.innerHTML = `<span style="color:${cam.enabled ? 'var(--success)' : 'var(--accent)'}; margin-right:5px;">●</span> ${cam.name}`;
                 if(a) a.addEventListener('click', (e) => {
                     e.preventDefault();
                     // switch to view-live 1x1
@@ -427,18 +427,18 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
                         a.classList.add('active');
                     }, 100);
                 });
-                menuCameraList.appendChild(a);
+                if (menuCameraList) menuCameraList.appendChild(a);
             });
         }
         
         // legacy
         if(cameraListEl) {
-            cameraListEl.innerHTML = '';
+            if (cameraListEl) cameraListEl.innerHTML = '';
             cameras.forEach(cam => {
                 const li = document.createElement('li');
                 if (!cam.enabled) li.classList.add('disabled');
-                li.innerHTML = `<span class="pulse-dot ${cam.enabled ? '' : 'offline'}"></span> ${cam.name}`;
-                cameraListEl.appendChild(li);
+                if (li) li.innerHTML = `<span class="pulse-dot ${cam.enabled ? '' : 'offline'}"></span> ${cam.name}`;
+                if (cameraListEl) cameraListEl.appendChild(li);
             });
         }
     }
@@ -497,7 +497,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
     function renderGrid(count) {
         cleanupAllPlayers();
 
-        videoGrid.innerHTML = '';
+        if (videoGrid) videoGrid.innerHTML = '';
         videoGrid.className = `video-grid grid-${count}`;
 
         // Create an array of active cameras only
@@ -517,7 +517,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
                 cell.dataset.camId = cam.id;
                 cell.dataset.streamType = initialStreamType;
 
-                cell.innerHTML = `
+                if (cell) cell.innerHTML = `
                     <div class="cam-player-wrapper" id="player-wrapper-${cam.id}"></div>
                     
                     <!-- Camera State Overlay -->
@@ -549,7 +549,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                 `;
-                videoGrid.appendChild(cell);
+                if (videoGrid) videoGrid.appendChild(cell);
 
                 initMediaMtxPlayer(cam.id, initialStreamType, cell, 0);
 
@@ -557,13 +557,13 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
                     handleFullscreenChange(cam.id, cell);
                 });
             } else {
-                cell.innerHTML = `
+                if (cell) cell.innerHTML = `
                     <div class="cam-empty">
                         <span style="font-size: 1.8rem; opacity: 0.4;">✖</span>
                         <span>CH ${i + 1} &bull; NO SIGNAL</span>
                     </div>
                 `;
-                videoGrid.appendChild(cell);
+                if (videoGrid) videoGrid.appendChild(cell);
             }
         }
     }
@@ -591,22 +591,22 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
             if (!stateOverlay) return;
             if (mode === 'hidden') {
                 stateOverlay.classList.add('hidden');
-                stateOverlay.style.display = 'none';
+                if (stateOverlay) stateOverlay.style.display = 'none';
                 if (pulseDot) pulseDot.classList.remove('offline');
             } else if (mode === 'loading') {
                 stateOverlay.classList.remove('hidden');
-                stateOverlay.style.display = 'flex';
+                if (stateOverlay) stateOverlay.style.display = 'flex';
                 if (spinner) spinner.style.display = 'block';
                 if (btnRetry) btnRetry.style.display = 'none';
                 if (stateTitle) stateTitle.textContent = title || 'Menghubungkan MediaMTX...';
-                if (stateSubtitle && subtitle) stateSubtitle.textContent = subtitle;
+                if (stateSubtitle && subtitle) if (stateSubtitle) stateSubtitle.textContent = subtitle;
             } else if (mode === 'error') {
                 stateOverlay.classList.remove('hidden');
-                stateOverlay.style.display = 'flex';
+                if (stateOverlay) stateOverlay.style.display = 'flex';
                 if (spinner) spinner.style.display = 'none';
                 if (btnRetry) btnRetry.style.display = 'inline-block';
                 if (stateTitle) stateTitle.textContent = title || 'Stream MediaMTX Tidak Tersedia';
-                if (stateSubtitle && subtitle) stateSubtitle.textContent = subtitle;
+                if (stateSubtitle && subtitle) if (stateSubtitle) stateSubtitle.textContent = subtitle;
                 if (pulseDot) pulseDot.classList.add('offline');
             }
         };
@@ -632,7 +632,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         renderHlsPlayer();
 
         function renderHlsPlayer() {
-            wrapper.innerHTML = `
+            if (wrapper) wrapper.innerHTML = `
                 <video 
                     id="player-${camId}" 
                     class="cam-player-video" 
@@ -681,7 +681,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
                 hlsInstances[camId] = hls;
                 
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                video.src = streamUrl;
+                if (video) video.src = streamUrl;
                 if(video) video.addEventListener('loadedmetadata', function() {
                     video.play().catch(e => console.warn('Auto-play prevented', e));
                     setOverlayState('hidden');
@@ -708,7 +708,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
 
         const qSelect = cell.querySelector(`#quality-${camId}`);
         if (qSelect && qSelect.value !== targetType) {
-            qSelect.value = targetType;
+            if (qSelect) qSelect.value = targetType;
         }
 
         console.log(`[MediaMTX Switch] Kamera ${cam.name} beralih ke stream ${targetType.toUpperCase()}`);
@@ -804,17 +804,17 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
 
     function renderTimeline() {
         const widthPercent = (24 / currentZoom) * 100;
-        scrollArea.style.width = `${widthPercent}%`;
+        if (scrollArea) scrollArea.style.width = `${widthPercent}%`;
 
-        scale.innerHTML = '';
+        if (scale) scale.innerHTML = '';
         for (let i = 0; i < 24; i++) {
             const mark = document.createElement('div');
             mark.className = 'scale-mark';
-            mark.textContent = `${i.toString().padStart(2, '0')}:00`;
-            scale.appendChild(mark);
+            if (mark) mark.textContent = `${i.toString().padStart(2, '0')}:00`;
+            if (scale) scale.appendChild(mark);
         }
 
-        tracks.innerHTML = '';
+        if (tracks) tracks.innerHTML = '';
         // Assume default segment is ~15 mins (900s) if not known
         const chunkDuration = 900; 
         
@@ -831,7 +831,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
                 playChunk(chunk, 0);
             });
             
-            tracks.appendChild(block);
+            if (tracks) tracks.appendChild(block);
         });
     }
 
@@ -841,7 +841,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         if (x < 0) x = 0;
         if (x > rect.width) x = rect.width;
         const pct = (x / rect.width) * 100;
-        scrubber.style.left = `${pct}%`;
+        if (scrubber) scrubber.style.left = `${pct}%`;
     }
 
     function seekToScrubberTime() {
@@ -870,9 +870,9 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         
         currentFileStartSec = chunk.startSec;
         const timePart = chunk.filename.replace('.mp4', '').replace('.ts', '').replace(/-/g, ':');
-        pbTitle.textContent = `Memutar: ${camName} (${currentPlaybackDate} ${timePart})`;
+        if (pbTitle) pbTitle.textContent = `Memutar: ${camName} (${currentPlaybackDate} ${timePart})`;
         
-        playbackPlayer.src = `/api/recordings/${currentPlaybackCam}/${currentPlaybackDate}/${chunk.filename}`;
+        if (playbackPlayer) playbackPlayer.src = `/api/recordings/${currentPlaybackCam}/${currentPlaybackDate}/${chunk.filename}`;
         playbackPlayer.load();
         
         playbackPlayer.onloadedmetadata = () => {
@@ -922,7 +922,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         if (!currentFileStartSec) return;
         const currentSec = currentFileStartSec + playbackPlayer.currentTime;
         const pct = (currentSec / 86400) * 100;
-        scrubber.style.left = `${pct}%`;
+        if (scrubber) scrubber.style.left = `${pct}%`;
     });
     
     if(playbackPlayer) playbackPlayer.addEventListener('ended', () => {
@@ -938,39 +938,39 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/recordings');
             recordingsMap = await res.json(); 
             
-            selRecCam.innerHTML = '<option value="">-- Pilih Kamera --</option>';
+            if (selRecCam) selRecCam.innerHTML = '<option value="">-- Pilih Kamera --</option>';
             cameras.forEach(c => {
                 const opt = document.createElement('option');
-                opt.value = c.id; opt.textContent = c.name;
-                selRecCam.appendChild(opt);
+                if (opt) opt.value = c.id; if (opt) opt.textContent = c.name;
+                if (selRecCam) selRecCam.appendChild(opt);
             });
             
-            selRecDate.innerHTML = '<option>Pilih Kamera Dulu</option>';
-            playbackList.innerHTML = '';
+            if (selRecDate) selRecDate.innerHTML = '<option>Pilih Kamera Dulu</option>';
+            if (playbackList) playbackList.innerHTML = '';
         } catch (err) { console.error(err); }
     }
 
     if(selRecCam) selRecCam.addEventListener('change', () => {
         const camId = selRecCam.value;
-        selRecDate.innerHTML = '';
+        if (selRecDate) selRecDate.innerHTML = '';
         
         if (!camId || !recordingsMap[camId]) {
-            selRecDate.innerHTML = '<option>Tidak ada rekaman</option>';
-            playbackList.innerHTML = '';
+            if (selRecDate) selRecDate.innerHTML = '<option>Tidak ada rekaman</option>';
+            if (playbackList) playbackList.innerHTML = '';
             return;
         }
 
         const dates = Object.keys(recordingsMap[camId]).sort().reverse();
         if (dates.length === 0) {
-            selRecDate.innerHTML = '<option>Tidak ada rekaman</option>';
-            playbackList.innerHTML = '';
+            if (selRecDate) selRecDate.innerHTML = '<option>Tidak ada rekaman</option>';
+            if (playbackList) playbackList.innerHTML = '';
             return;
         }
         
         dates.forEach(d => {
             const opt = document.createElement('option');
-            opt.value = d; opt.textContent = d;
-            selRecDate.appendChild(opt);
+            if (opt) opt.value = d; if (opt) opt.textContent = d;
+            if (selRecDate) selRecDate.appendChild(opt);
         });
         
         renderPlaybackList();
@@ -979,7 +979,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
     if(selRecDate) selRecDate.addEventListener('change', renderPlaybackList);
 
     function renderPlaybackList() {
-        playbackList.innerHTML = '';
+        if (playbackList) playbackList.innerHTML = '';
         currentPlaybackChunks = [];
         
         const camId = selRecCam.value;
@@ -997,7 +997,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         files.sort(); 
 
         if(files.length === 0) {
-            playbackList.innerHTML = '<li>Tidak ada klip</li>';
+            if (playbackList) playbackList.innerHTML = '<li>Tidak ada klip</li>';
             renderTimeline();
             return;
         }
@@ -1021,7 +1021,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
             const li = document.createElement('li');
             const timePart = f.replace('.mp4', '').replace('.ts', '').replace(/-/g, ':');
             
-            li.innerHTML = `🎥 <span>${timePart}</span>`;
+            if (li) li.innerHTML = `🎥 <span>${timePart}</span>`;
             
             if(li) li.addEventListener('click', () => {
                 const chunk = currentPlaybackChunks.find(c => c.filename === f);
@@ -1030,7 +1030,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
                 }
             });
             
-            playbackList.appendChild(li);
+            if (playbackList) playbackList.appendChild(li);
         });
 
         // Update timeline
@@ -1040,8 +1040,8 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
     // --- Modal Management (Settings) ---
     // replaced with nav routes
 
-    if(btnCloseSettings) btnCloseSettings.addEventListener('click', () => {
-        modal.classList.remove('active');
+    if(btnCloseSettings && modal) btnCloseSettings.addEventListener('click', () => {
+        if (modal) modal.classList.remove('active');
         resetForm();
     });
 
@@ -1051,7 +1051,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
             stabBtns.forEach(b => b.classList.remove('active'));
             stabPanes.forEach(p => p.classList.remove('active'));
             btn.classList.add('active');
-            document.getElementById(btn.getAttribute('data-target')).classList.add('active');
+            const target = document.getElementById(btn.getAttribute('data-target')); if (target) target.classList.add('active');
         });
     });
 
@@ -1061,7 +1061,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
             ctabBtns.forEach(b => b.classList.remove('active'));
             ctabPanes.forEach(p => p.classList.remove('active'));
             btn.classList.add('active');
-            document.getElementById(btn.getAttribute('data-target')).classList.add('active');
+            const target = document.getElementById(btn.getAttribute('data-target')); if (target) target.classList.add('active');
         });
     });
 
@@ -1094,7 +1094,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
             // 3. Suhu STB (°C)
             if (data.temp && sideCpuTemp) {
                 const deg = data.temp.celsius || 0;
-                sideCpuTemp.textContent = `${cpuPct}% | ${deg}°C`;
+                if (sideCpuTemp) sideCpuTemp.textContent = `${cpuPct}% | ${deg}°C`;
             }
 
             // 4. Storage Utama
@@ -1139,42 +1139,42 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         if (!selEl) return;
 
         try {
-            selEl.innerHTML = '<option value="">Memindai drive penyimpanan...</option>';
+            if (selEl) selEl.innerHTML = '<option value="">Memindai drive penyimpanan...</option>';
             const res = await fetch('/api/system/storage-devices');
             if (!res.ok) throw new Error('Gagal memuat daftar perangkat penyimpanan');
             const data = await res.json();
             detectedStorageDevices = data.devices || [];
 
-            selEl.innerHTML = '';
+            if (selEl) selEl.innerHTML = '';
             const currentPath = data.currentStoragePath || '';
 
             if (detectedStorageDevices.length === 0) {
-                selEl.innerHTML = '<option value="">Tidak ada media eksternal terdeteksi</option>';
+                if (selEl) selEl.innerHTML = '<option value="">Tidak ada media eksternal terdeteksi</option>';
             } else {
                 detectedStorageDevices.forEach(dev => {
                     const opt = document.createElement('option');
-                    opt.value = dev.mountPath;
+                    if (opt) opt.value = dev.mountPath;
                     const icon = dev.category === 'External' ? '🔌 [USB/HDD]' : (dev.category === 'Internal' ? '💽 [Internal]' : '📁 [Kustom]');
-                    opt.textContent = `${icon} ${dev.name} • Sisa: ${dev.freeGB} GB (${dev.percentUsed}% terpakai)`;
+                    if (opt) opt.textContent = `${icon} ${dev.name} • Sisa: ${dev.freeGB} GB (${dev.percentUsed}% terpakai)`;
                     if (dev.selected || dev.mountPath === currentPath) {
                         opt.selected = true;
                     }
-                    selEl.appendChild(opt);
+                    if (selEl) selEl.appendChild(opt);
                 });
             }
 
             const customOpt = document.createElement('option');
-            customOpt.value = '__custom__';
-            customOpt.textContent = '⚙️ Tentukan Jalur Folder Kustom...';
-            selEl.appendChild(customOpt);
+            if (customOpt) customOpt.value = '__custom__';
+            if (customOpt) customOpt.textContent = '⚙️ Tentukan Jalur Folder Kustom...';
+            if (selEl) selEl.appendChild(customOpt);
 
             if (customInput) {
-                customInput.value = currentPath;
+                if (customInput) customInput.value = currentPath;
             }
 
             renderStoragePreview(selEl.value);
         } catch(err) {
-            selEl.innerHTML = '<option value="">Gagal memindai perangkat</option>';
+            if (selEl) selEl.innerHTML = '<option value="">Gagal memindai perangkat</option>';
         }
     }
 
@@ -1183,17 +1183,17 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         if (!previewBox) return;
 
         if (!selectedPath || selectedPath === '__custom__') {
-            previewBox.style.display = 'none';
+            if (previewBox) previewBox.style.display = 'none';
             return;
         }
 
         const dev = detectedStorageDevices.find(d => d.mountPath === selectedPath);
         if (!dev) {
-            previewBox.style.display = 'none';
+            if (previewBox) previewBox.style.display = 'none';
             return;
         }
 
-        previewBox.style.display = 'block';
+        if (previewBox) previewBox.style.display = 'block';
         const nameEl = document.getElementById('stPreviewName');
         const mountEl = document.getElementById('stPreviewMount');
         const capEl = document.getElementById('stPreviewCapacity');
@@ -1223,7 +1223,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
                 renderStoragePreview('');
             } else {
                 if (customInput) {
-                    customInput.value = val;
+                    if (customInput) customInput.value = val;
                 }
                 renderStoragePreview(val);
             }
@@ -1256,9 +1256,9 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch('/api/settings');
             const data = await res.json();
-            document.getElementById('sysTgBot').value = data.telegramBotToken || '';
-            document.getElementById('sysTgChat').value = data.telegramChatId || '';
-            document.getElementById('sysP2pServer').value = data.p2pServer || '';
+            const el_sysTgBot = document.getElementById('sysTgBot'); if (el_sysTgBot) el_sysTgBot.value = data.telegramBotToken || '';
+            const el_sysTgChat = document.getElementById('sysTgChat'); if (el_sysTgChat) el_sysTgChat.value = data.telegramChatId || '';
+            const el_sysP2pServer = document.getElementById('sysP2pServer'); if (el_sysP2pServer) el_sysP2pServer.value = data.p2pServer || '';
             
             const recQ = data.recordingQuality || 'main';
             const sysRecEl = document.getElementById('sysRecordingQuality');
@@ -1298,7 +1298,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         } catch(e) {}
     }
 
-    document.getElementById('systemForm').addEventListener('submit', async (e) => {
+    const systemForm = document.getElementById('systemForm'); if(systemForm) systemForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const recQ = document.getElementById('sysRecordingQuality')?.value || 'main';
         const mPort = parseInt(document.getElementById('sysMediaMtxPort')?.value || '8889', 10);
@@ -1392,15 +1392,15 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
 
     function renderModalList() {
         const list = document.getElementById('modalCameraList');
-        list.innerHTML = '';
-        if (cameras.length === 0) { list.innerHTML = '<div style="padding:1rem;">Belum ada kamera</div>'; return; }
+        if (list) list.innerHTML = '';
+        if (cameras.length === 0) { if (list) list.innerHTML = '<div style="padding:1rem;">Belum ada kamera</div>'; return; }
 
         cameras.forEach(cam => {
             const div = document.createElement('div');
             div.className = 'modal-camera-item';
             if (!cam.enabled) div.style.opacity = '0.5';
             
-            div.innerHTML = `
+            if (div) div.innerHTML = `
                 <div>
                     <strong>${cam.name}</strong> 
                     ${!cam.enabled ? '<span class="badge" style="background:var(--text-muted);">OFF</span>' : ''}
@@ -1413,31 +1413,31 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
                     <button class="btn-sm btn-delete" onclick="deleteCamera('${cam.id}')">Hapus</button>
                 </div>
             `;
-            list.appendChild(div);
+            if (list) list.appendChild(div);
         });
     }
 
     window.editCamera = function(id) {
         const cam = cameras.find(c => c.id === id);
         if (cam) {
-            document.getElementById('camId').value = cam.id;
-            document.getElementById('camEnabled').checked = cam.enabled;
-            document.getElementById('camName').value = cam.name;
+            const el_camId = document.getElementById('camId'); if (el_camId) el_camId.value = cam.id;
+            const el2_camEnabled = document.getElementById('camEnabled'); if (el2_camEnabled) el2_camEnabled.checked = cam.enabled;
+            const el_camName = document.getElementById('camName'); if (el_camName) el_camName.value = cam.name;
             
-            document.getElementById('camMainUrl').value = cam.mainStreamUrl;
-            document.getElementById('camSubUrl').value = cam.subStreamUrl !== cam.mainStreamUrl ? cam.subStreamUrl : '';
+            const el_camMainUrl = document.getElementById('camMainUrl'); if (el_camMainUrl) el_camMainUrl.value = cam.mainStreamUrl;
+            const el_camSubUrl = document.getElementById('camSubUrl'); if (el_camSubUrl) el_camSubUrl.value = cam.subStreamUrl !== cam.mainStreamUrl ? cam.subStreamUrl : '';
             if (document.getElementById('camTranscode')) {
-                document.getElementById('camTranscode').value = cam.transcode || 'auto';
+                const el_camTranscode = document.getElementById('camTranscode'); if (el_camTranscode) el_camTranscode.value = cam.transcode || 'auto';
             }
             
-            document.getElementById('camRecordMode').value = cam.recordMode;
-            document.getElementById('camStoragePath').value = cam.storagePath.includes('public/recordings') ? '' : cam.storagePath;
-            document.getElementById('camMaxDays').value = cam.maxStorageDays;
-            document.getElementById('camMaxGB').value = cam.maxFolderSizeGB;
-            document.getElementById('camSegmentSec').value = cam.segmentDurationSec;
+            const el_camRecordMode = document.getElementById('camRecordMode'); if (el_camRecordMode) el_camRecordMode.value = cam.recordMode;
+            const el_camStoragePath = document.getElementById('camStoragePath'); if (el_camStoragePath) el_camStoragePath.value = cam.storagePath.includes('public/recordings') ? '' : cam.storagePath;
+            const el_camMaxDays = document.getElementById('camMaxDays'); if (el_camMaxDays) el_camMaxDays.value = cam.maxStorageDays;
+            const el_camMaxGB = document.getElementById('camMaxGB'); if (el_camMaxGB) el_camMaxGB.value = cam.maxFolderSizeGB;
+            const el_camSegmentSec = document.getElementById('camSegmentSec'); if (el_camSegmentSec) el_camSegmentSec.value = cam.segmentDurationSec;
 
-            document.getElementById('formTitle').textContent = `Edit Kamera: ${cam.name}`;
-            btnCancelEdit.style.display = 'block';
+            const formTitle = document.getElementById('formTitle'); if(formTitle) if (formTitle) formTitle.textContent = `Edit Kamera: ${cam.name}`;
+            if (btnCancelEdit) btnCancelEdit.style.display = 'block';
             
             // Switch to General Tab automatically
             ctabBtns[0].click();
@@ -1446,12 +1446,12 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
 
     function resetForm() {
         cameraForm.reset();
-        document.getElementById('camId').value = '';
+        const el_camId = document.getElementById('camId'); if (el_camId) el_camId.value = '';
         if (document.getElementById('camTranscode')) {
-            document.getElementById('camTranscode').value = 'auto';
+            const el_camTranscode = document.getElementById('camTranscode'); if (el_camTranscode) el_camTranscode.value = 'auto';
         }
-        document.getElementById('formTitle').textContent = "Tambah / Edit Kamera";
-        btnCancelEdit.style.display = 'none';
+        const formTitle = document.getElementById('formTitle'); if(formTitle) if (formTitle) formTitle.textContent = "Tambah / Edit Kamera";
+        if (btnCancelEdit) btnCancelEdit.style.display = 'none';
         ctabBtns[0].click();
     }
 
