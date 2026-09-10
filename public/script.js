@@ -1,65 +1,81 @@
-// script.js - NVR CCTV Dashboard V6
+// script.js - Archer NVR V8.7 Multi-Tenant Controller
 
-if(document) document.addEventListener('DOMContentLoaded', () => {
-    // Referensi Elemen Live
-    const videoGrid = document.getElementById('videoGrid');
-    const layoutBtns = document.querySelectorAll('.layout-btn');
-    const cameraListEl = document.getElementById('cameraList');
-    const clockEl = document.getElementById('clock');
-    
-    // Referensi Navigasi Tabs Utama & Sidebar
-    const tabBtns = document.querySelectorAll('.tab-btn');
-    const viewPanes = document.querySelectorAll('.view-pane');
-    const sidePanels = document.querySelectorAll('.side-panel');
-
-    // Referensi Playback
-    const selRecDate = document.getElementById('selRecDate');
-    const selRecCam = document.getElementById('selRecCam');
-    const playbackList = document.getElementById('playbackList');
-    const playbackPlayer = document.getElementById('playbackPlayer');
-    const pbTitle = document.getElementById('pbTitle');
-
-    // Referensi Modal
-    const modal = document.getElementById('settingsModal');
-    const btnSettings = document.getElementById('btnSettings');
-    const btnCloseSettings = document.getElementById('btnCloseSettings');
-    const stabBtns = document.querySelectorAll('.stab-btn');
-    const stabPanes = document.querySelectorAll('.stab-pane');
-    
-    // Referensi Form Inner Tabs
-    const ctabBtns = document.querySelectorAll('.ctab-btn');
-    const ctabPanes = document.querySelectorAll('.ctab-pane');
-    
-    // Referensi Form
-    const cameraForm = document.getElementById('cameraForm');
-    const btnCancelEdit = document.getElementById('btnCancelEdit');
-
-    // Data State
+document.addEventListener('DOMContentLoaded', () => {
+    // --- Global State ---
+    let currentUserRole = null;
+    let currentUsername = '';
     let cameras = [];
-    let hlsInstances = {}; 
-    let liveSyncTimers = {};
-    let webrtcConnections = {};
-    let mediamtxPort = 8889;
-    let mediamtxHost = '';
-    let playerMode = 'iframe'; // 'iframe' | 'whep'
     let currentGridCount = 4;
-    let recordingsMap = {}; // { 'cam_1': { '2023-10-01': ['15-30-00.mp4'] } }
+    let mCurrentGridCount = 1;
     let detectedStorageDevices = [];
-    let sysMonitorInterval = null;
+    let sysStatsInterval = null;
+    let clockInterval = null;
+    let hlsPlayers = {};
 
-    // --- Authentication ---
+    // --- References: Auth ---
     const authOverlay = document.getElementById('authOverlay');
-    const mainApp = document.getElementById('mainApp');
     const authForm = document.getElementById('authForm');
-    const authTitle = document.getElementById('authTitle');
-    const authError = document.getElementById('authError');
     const authUsername = document.getElementById('authUsername');
     const authPassword = document.getElementById('authPassword');
-    const authSubmitBtn = document.getElementById('authSubmitBtn');
-    
-    let isSetupMode = false;
+    const authError = document.getElementById('authError');
 
-    // --- Password Peek Feature (Intip Password) ---
+    // --- References: App Containers ---
+    const adminApp = document.getElementById('adminApp');
+    const userApp = document.getElementById('userApp');
+
+    // --- References: Admin Elements ---
+    const lblAdminName = document.getElementById('lblAdminName');
+    const btnLogoutAdmin = document.getElementById('btnLogoutAdmin');
+    const videoGrid = document.getElementById('videoGrid');
+    const liveClock = document.getElementById('liveClock');
+    const btnReloadStreams = document.getElementById('btnReloadStreams');
+    const modalCameraList = document.getElementById('modalCameraList');
+    const cameraForm = document.getElementById('cameraForm');
+    const btnCancelEdit = document.getElementById('btnCancelEdit');
+    const btnScrollToForm = document.getElementById('btnScrollToForm');
+    const formTitle = document.getElementById('formTitle');
+    const globalStorageForm = document.getElementById('globalStorageForm');
+    const sysStorageDevice = document.getElementById('sysStorageDevice');
+    const btnRefreshStorage = document.getElementById('btnRefreshStorage');
+    const storageDevicePreview = document.getElementById('storageDevicePreview');
+    const sysCustomStoragePath = document.getElementById('sysCustomStoragePath');
+    const sysRecordingQuality = document.getElementById('sysRecordingQuality');
+    const systemForm = document.getElementById('systemForm');
+    const changePasswordForm = document.getElementById('changePasswordForm');
+    const btnRefreshLogs = document.getElementById('btnRefreshLogs');
+    const logsContainer = document.getElementById('logsContainer');
+
+    // Admin Users Management Elements
+    const btnToggleAddUser = document.getElementById('btnToggleAddUser');
+    const boxAddUserForm = document.getElementById('boxAddUserForm');
+    const btnCancelAddUser = document.getElementById('btnCancelAddUser');
+    const addUserForm = document.getElementById('addUserForm');
+    const userTableBody = document.getElementById('userTableBody');
+
+    // Admin Playback Elements
+    const selRecCam = document.getElementById('selRecCam');
+    const selRecDate = document.getElementById('selRecDate');
+    const btnFetchRecordings = document.getElementById('btnFetchRecordings');
+    const playbackPlayer = document.getElementById('playbackPlayer');
+    const playbackList = document.getElementById('playbackList');
+    const pbTitle = document.getElementById('pbTitle');
+    const clipCount = document.getElementById('clipCount');
+
+    // --- References: Mobile User Elements ---
+    const lblUserMobileName = document.getElementById('lblUserMobileName');
+    const btnLogoutUser = document.getElementById('btnLogoutUser');
+    const mVideoGrid = document.getElementById('mVideoGrid');
+    const btnMRefreshStreams = document.getElementById('btnMRefreshStreams');
+    const mSelRecCam = document.getElementById('mSelRecCam');
+    const mSelRecDate = document.getElementById('mSelRecDate');
+    const mBtnFetchRecordings = document.getElementById('mBtnFetchRecordings');
+    const mPlaybackPlayer = document.getElementById('mPlaybackPlayer');
+    const mPlaybackList = document.getElementById('mPlaybackList');
+    const mCameraCardsList = document.getElementById('mCameraCardsList');
+    const mProfileName = document.getElementById('mProfileName');
+    const mChangePasswordForm = document.getElementById('mChangePasswordForm');
+
+    // --- Password Peek Handler ---
     function initPasswordPeeks() {
         document.querySelectorAll('.btn-peek-pwd').forEach(btn => {
             btn.onclick = (e) => {
@@ -71,315 +87,272 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
                 if (input.type === 'password') {
                     input.type = 'text';
                     if (icon) icon.textContent = '🙈';
-                    btn.title = 'Sembunyikan Password';
-                    btn.setAttribute('aria-label', 'Sembunyikan Password');
                 } else {
                     input.type = 'password';
                     if (icon) icon.textContent = '👁️';
-                    btn.title = 'Intip / Lihat Password';
-                    btn.setAttribute('aria-label', 'Lihat Password');
                 }
             };
         });
     }
+    initPasswordPeeks();
 
+    // =========================================================================
+    // 1. AUTHENTICATION & ROLE ROUTING
+    // =========================================================================
     async function checkAuth() {
         try {
             const res = await fetch('/api/auth/status');
             const data = await res.json();
-            
-            const authTabs = document.getElementById('authTabs');
-            const tabLoginBtn = document.getElementById('tabLoginBtn');
-            const tabRegisterBtn = document.getElementById('tabRegisterBtn');
-            const confirmGroup = document.getElementById('authConfirmGroup');
-            
-            if (data.needSetup) {
-                isSetupMode = true;
-                if (authTabs) authTabs.style.display = 'flex';
-                if (tabLoginBtn) tabLoginBtn.style.display = 'none'; // Only allow register
-                if (tabRegisterBtn) {
-                    if (tabRegisterBtn) tabRegisterBtn.classList.add('active');
-                    if (tabRegisterBtn) tabRegisterBtn.style.display = 'block';
+
+            if (data.authenticated) {
+                currentUserRole = data.role;
+                currentUsername = data.username;
+
+                if (currentUserRole === 'superadmin') {
+                    // Superadmin dialihkan ke portal khusus superadmin
+                    window.location.href = '/superadmin';
+                    return;
                 }
-                
-                if (authTitle) authTitle.style.display = 'block';
-                if (authTitle) authTitle.textContent = 'Registrasi Admin Pertama';
-                if (authSubmitBtn) authSubmitBtn.textContent = 'Buat Akun & Login';
-                if (confirmGroup) confirmGroup.style.display = 'block';
-                if (authForm) authForm.style.display = 'block';
-                if (authOverlay) authOverlay.style.display = 'flex';
-                if (mainApp) mainApp.style.display = 'none';
-                initPasswordPeeks();
-            } else if (!data.authenticated) {
-                isSetupMode = false;
-                if (authTabs) authTabs.style.display = 'flex';
-                if (tabRegisterBtn) tabRegisterBtn.style.display = 'none'; // Only allow login if already set up
-                if (tabLoginBtn) {
-                    if (tabLoginBtn) tabLoginBtn.classList.add('active');
-                    if (tabLoginBtn) tabLoginBtn.style.display = 'block';
+
+                authOverlay.style.display = 'none';
+
+                if (currentUserRole === 'administrator') {
+                    userApp.style.display = 'none';
+                    adminApp.style.display = 'flex';
+                    if (lblAdminName) lblAdminName.textContent = currentUsername;
+                    initAdminDashboard();
+                } else {
+                    // Role: User (Mobile Client PWA)
+                    adminApp.style.display = 'none';
+                    userApp.style.display = 'flex';
+                    if (lblUserMobileName) lblUserMobileName.textContent = currentUsername;
+                    if (mProfileName) mProfileName.textContent = currentUsername;
+                    initMobileUserApp();
                 }
-                
-                if (authTitle) authTitle.style.display = 'block';
-                if (authTitle) authTitle.textContent = 'Login NVR';
-                if (authSubmitBtn) authSubmitBtn.textContent = 'Login';
-                if (confirmGroup) confirmGroup.style.display = 'none';
-                if (authForm) authForm.style.display = 'block';
-                if (authOverlay) authOverlay.style.display = 'flex';
-                if (mainApp) mainApp.style.display = 'none';
-                initPasswordPeeks();
             } else {
-                // Authenticated
-                if (authOverlay) authOverlay.style.display = 'none';
-                if (mainApp) mainApp.style.display = 'flex';
-                const lblUsername = document.getElementById('lblUsername');
-                if (lblUsername) lblUsername.textContent = data.username || 'Admin';
-                initializeApp();
+                authOverlay.style.display = 'flex';
+                adminApp.style.display = 'none';
+                userApp.style.display = 'none';
             }
-        } catch(e) {
-            if (authTitle) authTitle.style.display = 'block';
-            if (authTitle) authTitle.textContent = 'Koneksi ke server gagal.';
+        } catch (err) {
+            authOverlay.style.display = 'flex';
+            adminApp.style.display = 'none';
+            userApp.style.display = 'none';
         }
     }
 
-    if(authForm) authForm.addEventListener('submit', async (e) => {
+    authForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        authError.textContent = '';
         const username = authUsername.value.trim();
         const password = authPassword.value;
-        const confirmInput = document.getElementById('authPasswordConfirm');
 
-        if (isSetupMode && confirmInput) {
-            const confirmVal = confirmInput.value;
-            if (password !== confirmVal) {
-                if (authError) authError.textContent = 'Password dan konfirmasi password tidak sama!';
-                return;
-            }
-            if (password.length < 4) {
-                if (authError) authError.textContent = 'Password minimal 4 karakter!';
-                return;
-            }
-        }
-
-        const endpoint = isSetupMode ? '/api/auth/setup' : '/api/auth/login';
-        if (authError) authError.textContent = '';
-        
         try {
-            const res = await fetch(endpoint, {
+            const res = await fetch('/api/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
             const data = await res.json();
-            
+
             if (res.ok && data.success) {
-                if (authOverlay) authOverlay.style.display = 'none';
-                if (mainApp) mainApp.style.display = 'flex';
-                initializeApp();
+                if (data.role === 'superadmin') {
+                    window.location.href = '/superadmin';
+                } else {
+                    checkAuth();
+                }
             } else {
-                if (authError) authError.textContent = data.error || 'Login gagal';
+                authError.textContent = data.error || 'Username atau password salah.';
             }
-        } catch(e) {
-            if (authError) authError.textContent = 'Terjadi kesalahan sistem.';
+        } catch (err) {
+            authError.textContent = 'Gagal menghubungi server NVR.';
         }
     });
 
-    const btnLogout = document.getElementById('btnLogout');
-    if (btnLogout) {
-        if(btnLogout) btnLogout.addEventListener('click', async () => {
-            try {
-                await fetch('/api/auth/logout', { method: 'POST' });
-                window.location.reload();
-            } catch(e) {
-                console.error(e);
-            }
-        });
+    async function handleLogout() {
+        try {
+            await fetch('/api/auth/logout', { method: 'POST' });
+        } catch (e) {}
+        window.location.reload();
     }
 
-    // Wrap initial fetching in initializeApp
-    function initializeApp() {
-        initPasswordPeeks();
+    if (btnLogoutAdmin) btnLogoutAdmin.addEventListener('click', handleLogout);
+    if (btnLogoutUser) btnLogoutUser.addEventListener('click', handleLogout);
+
+    // =========================================================================
+    // 2. ADMINISTRATOR DASHBOARD LOGIC
+    // =========================================================================
+    function initAdminDashboard() {
+        startLiveClock();
+        initNavigation();
+        initCameraTabs();
+        startSystemMonitoring();
         fetchCameras();
-        setInterval(fetchCameras, 30000); // refresh 30s
-        startSystemMonitoring(); // Armbian Real-time System Monitoring (CPU, RAM, Suhu STB, Storage, Network)
+        fetchStorageDevices();
+        fetchSystemSettings();
+        loadUsersList();
+
+        // Default set date to today
+        const today = new Date().toISOString().split('T')[0];
+        if (selRecDate) selRecDate.value = today;
     }
 
-    // Initialize password peeks immediately for login/setup overlay
-    initPasswordPeeks();
-
-    // Start with checkAuth instead of fetching directly
-    checkAuth();
-
-    // Referensi Mobile Menu
-    var btnMobileMenu = document.getElementById('btnMobileMenu');
-    var sidebar = document.querySelector('.sidebar');
-    var sidebarOverlay = document.getElementById('sidebarOverlay');
-
-    if (btnMobileMenu) {
-        if(btnMobileMenu) btnMobileMenu.addEventListener('click', () => {
-            if (window.innerWidth <= 768) {
-                // Mobile behavior: slide in/out
-                if (sidebar) sidebar.classList.toggle('open');
-                if (sidebarOverlay) sidebarOverlay.classList.toggle('active');
-            } else {
-                // Desktop behavior: collapse sidebar
-                if (sidebar) sidebar.classList.toggle('collapsed');
-            }
-        });
-    }
-    
-    function closeMobileMenu() {
-        if (window.innerWidth <= 768) {
-            if (sidebar) sidebar.classList.remove('open');
-            if (sidebarOverlay) sidebarOverlay.classList.remove('active');
-        }
+    function startLiveClock() {
+        if (clockInterval) clearInterval(clockInterval);
+        const updateClock = () => {
+            const now = new Date();
+            if (liveClock) liveClock.textContent = now.toLocaleTimeString('id-ID');
+        };
+        updateClock();
+        clockInterval = setInterval(updateClock, 1000);
     }
 
-    if (sidebarOverlay) {
-        if(sidebarOverlay) sidebarOverlay.addEventListener('click', closeMobileMenu);
-    }
+    function initNavigation() {
+        const navItems = document.querySelectorAll('.sidebar-nav .nav-item');
+        const viewPanes = document.querySelectorAll('.view-pane');
+        const btnMobileMenu = document.getElementById('btnMobileMenu');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
 
-    // --- Manajemen Waktu ---
-    setInterval(() => {
-        const now = new Date();
-        if (clockEl) clockEl.textContent = now.toLocaleTimeString('id-ID', { hour12: false });
-    }, 1000);
+        navItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                navItems.forEach(n => n.classList.remove('active'));
+                viewPanes.forEach(v => v.classList.remove('active'));
 
-    /* OLD TAB NAV REMOVED */
-    // Navigasi Baru
-    const navItems = document.querySelectorAll('.nav-item, .nav-subitem');
-    var btnMobileMenu = document.getElementById('btnMobileMenu');
-    var sidebar = document.getElementById('sidebar');
-    var sidebarOverlay = document.getElementById('sidebarOverlay');
+                item.classList.add('active');
+                const targetId = item.getAttribute('data-target');
+                const targetPane = document.getElementById(targetId);
+                if (targetPane) targetPane.classList.add('active');
 
-    if(btnMobileMenu) {
-        if(btnMobileMenu) btnMobileMenu.addEventListener('click', () => {
-            if (sidebar) sidebar.classList.add('mobile-open');
-            if (sidebarOverlay) sidebarOverlay.classList.add('active');
-        });
-    }
-
-    if(sidebarOverlay) {
-        if(sidebarOverlay) sidebarOverlay.addEventListener('click', () => {
-            if (sidebar) sidebar.classList.remove('mobile-open');
-            if (sidebarOverlay) sidebarOverlay.classList.remove('active');
-        });
-    }
-
-    window.toggleNavGroup = function(headerEl) {
-        headerEl.parentElement.classList.toggle('open');
-    };
-
-    navItems.forEach(item => {
-        if(item) item.addEventListener('click', (e) => {
-            e.preventDefault();
-            // khusus untuk layout-btn live view
-            if(item.classList.contains('layout-btn')) return;
-
-            navItems.forEach(i => i.classList.remove('active'));
-            viewPanes.forEach(p => p.classList.remove('active'));
-            
-            item.classList.add('active');
-            const targetId = item.getAttribute('data-target');
-            const targetEl = document.getElementById(targetId);
-            if(targetEl) targetEl.classList.add('active');
-            
-            if (targetId === 'view-playback') fetchRecordings();
-            if (targetId === 'view-logs') fetchLogs();
-            if (targetId === 'view-setting-record') fetchStorageOptions();
-            if (targetId === 'view-setting-cameras') fetchCameras(); // or renderModalList if we keep the same logic
-
-            if (window.innerWidth <= 768) {
+                // Close mobile sidebar if open
                 if (sidebar) sidebar.classList.remove('mobile-open');
                 if (sidebarOverlay) sidebarOverlay.classList.remove('active');
-            }
-        });
-    });
 
-
-    // --- Fetch System Logs ---
-    const btnRefreshLogs = document.getElementById('btnRefreshLogs');
-    if (btnRefreshLogs) {
-        if(btnRefreshLogs) btnRefreshLogs.addEventListener('click', fetchLogs);
-    }
-
-    async function fetchLogs() {
-        const logsContainer = document.getElementById('logsContainer');
-        try {
-            const res = await fetch('/api/logs'); // Need to implement this in server.js
-            const data = await res.json();
-            if (logsContainer) logsContainer.innerHTML = data.logs.map(log => 
-                `<div><span style="color:#8fbcbb;">[${log.timestamp}]</span> <span style="color:${log.level === 'ERROR' ? '#bf616a' : log.level === 'WARN' ? '#ebcb8b' : '#a3be8c'}">[${log.level}]</span> ${log.message}</div>`
-            ).join('');
-            if (logsContainer) logsContainer.scrollTop = logsContainer.scrollHeight;
-        } catch(e) {
-            if (logsContainer) logsContainer.innerHTML = 'Gagal memuat log sistem.';
-        }
-    }
-
-    // --- Fetch Storage Options ---
-    async function fetchStorageOptions() {
-        try {
-            const resOpt = await fetch('/api/storage-options');
-            const options = await resOpt.json();
-            
-            const selectEl = document.getElementById('globalStorageMode');
-            if (selectEl) selectEl.innerHTML = '';
-            
-            options.forEach(opt => {
-                const optionEl = document.createElement('option');
-                if (optionEl) optionEl.value = opt.id === 'disabled' ? 'disabled' : opt.path;
-                if (optionEl) optionEl.textContent = opt.label;
-                if (selectEl) selectEl.appendChild(optionEl);
+                if (targetId === 'view-logs') fetchLogs();
+                if (targetId === 'view-setting-users') loadUsersList();
+                if (targetId === 'view-setting-record') fetchStorageDevices();
             });
-            
-            // fetch current global settings
-            const resSet = await fetch('/api/settings');
-            const currentSettings = await resSet.json();
-            
-            if (currentSettings.globalStorageMode === 'disabled') {
-                if (selectEl) selectEl.value = 'disabled';
-            } else if (currentSettings.globalStoragePath) {
-                if (selectEl) selectEl.value = currentSettings.globalStoragePath;
-            }
+        });
 
-            const recQuality = currentSettings.recordingQuality || 'main';
-            const globRecEl = document.getElementById('globalRecordingQuality');
-            if (globRecEl) globRecEl.value = recQuality;
-            const sysRecEl = document.getElementById('sysRecordingQuality');
-            if (sysRecEl) sysRecEl.value = recQuality;
+        if (btnMobileMenu && sidebar) {
+            btnMobileMenu.addEventListener('click', () => {
+                sidebar.classList.toggle('mobile-open');
+                if (sidebarOverlay) sidebarOverlay.classList.toggle('active');
+            });
+        }
 
-        } catch (e) {
-            console.error('Failed to fetch storage options:', e);
+        if (sidebarOverlay) {
+            sidebarOverlay.addEventListener('click', () => {
+                if (sidebar) sidebar.classList.remove('mobile-open');
+                sidebarOverlay.classList.remove('active');
+            });
+        }
+
+        // Layout Grid Switcher
+        document.querySelectorAll('.grid-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.grid-btn').forEach(b => {
+                    b.classList.remove('active');
+                    b.style.background = '';
+                    b.style.color = '';
+                });
+                btn.classList.add('active');
+                btn.style.background = '#2563eb';
+                btn.style.color = 'white';
+                currentGridCount = parseInt(btn.getAttribute('data-grid'), 10) || 4;
+                renderAdminGrid(currentGridCount);
+            });
+        });
+
+        if (btnReloadStreams) {
+            btnReloadStreams.addEventListener('click', () => {
+                fetchCameras();
+            });
+        }
+
+        if (btnScrollToForm && cameraForm) {
+            btnScrollToForm.addEventListener('click', () => {
+                resetCameraForm();
+                cameraForm.scrollIntoView({ behavior: 'smooth' });
+            });
         }
     }
 
-    const globalStorageForm = document.getElementById('globalStorageForm');
-    if (globalStorageForm) {
-        if(globalStorageForm) globalStorageForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const val = document.getElementById('globalStorageMode').value;
-            const recQ = document.getElementById('globalRecordingQuality')?.value || 'main';
-            const payload = {
-                globalStorageMode: val === 'disabled' ? 'disabled' : 'enabled',
-                globalStoragePath: val === 'disabled' ? '' : val,
-                recordingQuality: recQ
-            };
-            try {
-                await fetch('/api/settings', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(payload)
-                });
-                const sysRecEl = document.getElementById('sysRecordingQuality');
-                if (sysRecEl) sysRecEl.value = recQ;
-
-                alert('Preferensi Storage & Kualitas Rekaman Berhasil Disimpan!');
-            } catch(e) {
-                alert('Gagal menyimpan preferensi storage.');
-            }
+    function initCameraTabs() {
+        const ctabBtns = document.querySelectorAll('.ctab-btn');
+        const ctabPanes = document.querySelectorAll('.ctab-pane');
+        ctabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                ctabBtns.forEach(b => b.classList.remove('active'));
+                ctabPanes.forEach(p => p.classList.remove('active'));
+                btn.classList.add('active');
+                const target = document.getElementById(btn.getAttribute('data-target'));
+                if (target) target.classList.add('active');
+            });
         });
     }
 
-    // --- Fetch Data ---
+    // --- Real-time Hardware System Monitor (Armbian STB) ---
+    function startSystemMonitoring() {
+        if (sysStatsInterval) clearInterval(sysStatsInterval);
+        updateHardwareStats();
+        sysStatsInterval = setInterval(updateHardwareStats, 3000);
+    }
+
+    async function updateHardwareStats() {
+        try {
+            const res = await fetch('/api/system/stats');
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!data) return;
+
+            // 1. CPU
+            const wCpu = document.getElementById('wCpu');
+            if (wCpu && data.cpu) {
+                wCpu.textContent = `${data.cpu.usagePercent || 0}%`;
+                wCpu.style.color = (data.cpu.usagePercent > 85) ? '#ef4444' : '#f8fafc';
+            }
+
+            // 2. RAM
+            const wRam = document.getElementById('wRam');
+            if (wRam && data.ram) {
+                const ramPct = data.ram.usagePercent !== undefined ? data.ram.usagePercent : (data.ram.usedPercent || 0);
+                wRam.textContent = `${ramPct}%`;
+                wRam.style.color = (ramPct > 85) ? '#ef4444' : '#f8fafc';
+            }
+
+            // 3. STB Thermal Temperature
+            const wTemp = document.getElementById('wTemp');
+            if (wTemp && data.temp) {
+                const deg = data.temp.celsius || 0;
+                wTemp.textContent = `${deg}°C`;
+                wTemp.style.color = (deg >= 70) ? '#ef4444' : (deg >= 60 ? '#f59e0b' : '#34d399');
+            }
+
+            // 4. Disk Storage
+            const wStorage = document.getElementById('wStorage');
+            if (wStorage && data.storage) {
+                const diskPct = data.storage.percentUsed || 0;
+                wStorage.textContent = `${diskPct}%`;
+                wStorage.style.color = (diskPct > 90) ? '#ef4444' : '#f8fafc';
+            }
+
+            // 5. Network Rx/Tx
+            const wNetIf = document.getElementById('wNetIf');
+            const wNetDown = document.getElementById('wNetDown');
+            const wNetUp = document.getElementById('wNetUp');
+            if (data.network) {
+                if (wNetIf) wNetIf.textContent = data.network.interface || 'eth0';
+                if (wNetDown) wNetDown.textContent = data.network.rxSpeedFormatted || '0 KB/s';
+                if (wNetUp) wNetUp.textContent = data.network.txSpeedFormatted || '0 KB/s';
+            }
+        } catch (err) {
+            // silent polling error
+        }
+    }
+
+    // --- Camera Fetch & Grid Rendering ---
     async function fetchCameras() {
         try {
             const res = await fetch('/api/cameras');
@@ -389,1113 +362,848 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
             }
             const data = await res.json();
             cameras = data.cameras || [];
-            if (data.mediamtxPort) mediamtxPort = data.mediamtxPort;
-            if (data.mediamtxHost !== undefined) mediamtxHost = data.mediamtxHost;
-            updateCameraSidebar();
-            renderGrid(currentGridCount);
-            renderModalList();
+
+            renderAdminGrid(currentGridCount);
+            renderModalCameraList();
+            populateCameraSelects();
         } catch (err) {
-            console.error('Gagal mengambil data kamera:', err);
+            console.error('Gagal memuat kamera:', err);
         }
     }
 
-    function updateCameraSidebar() {
-        const lblActiveCams = document.getElementById('lblActiveCams');
-        const menuCameraList = document.getElementById('menuCameraList');
-        
-        let activeCount = cameras.filter(c => c.enabled).length;
-        if (lblActiveCams) lblActiveCams.textContent = `${activeCount} Kamera Aktif`;
-
-        if (menuCameraList) {
-            if (menuCameraList) menuCameraList.innerHTML = '';
-            if (cameras.length === 0) {
-                if (menuCameraList) menuCameraList.innerHTML = '<span style="padding: 0.5rem 1.5rem 0.5rem 3rem; color:var(--text-muted); font-size:0.8rem; display:block;">Belum ada kamera</span>';
-                return;
-            }
-            cameras.forEach(cam => {
-                const a = document.createElement('a');
-                a.href = '#';
-                a.className = 'nav-subitem';
-                if (a) a.innerHTML = `<span style="color:${cam.enabled ? 'var(--success)' : 'var(--accent)'}; margin-right:5px;">●</span> ${cam.name}`;
-                if(a) a.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    // switch to view-live 1x1
-                    const layoutBtn1 = document.querySelector('.layout-btn[data-grid="1"]');
-                    if (layoutBtn1) layoutBtn1.click();
-                    setTimeout(() => {
-                        document.querySelectorAll('.nav-subitem').forEach(i => i.classList.remove('active'));
-                        a.classList.add('active');
-                    }, 100);
-                });
-                if (menuCameraList) menuCameraList.appendChild(a);
-            });
-        }
-        
-        // legacy
-        if(cameraListEl) {
-            if (cameraListEl) cameraListEl.innerHTML = '';
-            cameras.forEach(cam => {
-                const li = document.createElement('li');
-                if (!cam.enabled) li.classList.add('disabled');
-                if (li) li.innerHTML = `<span class="pulse-dot ${cam.enabled ? '' : 'offline'}"></span> ${cam.name}`;
-                if (cameraListEl) cameraListEl.appendChild(li);
-            });
-        }
-    }
-
-    // --- Grid Layout & Dual Stream ---
-    layoutBtns.forEach(btn => {
-        if(btn) btn.addEventListener('click', (e) => {
-            layoutBtns.forEach(b => b.classList.remove('active'));
-            e.currentTarget.classList.add('active');
-            currentGridCount = parseInt(e.currentTarget.getAttribute('data-grid'));
-            renderGrid(currentGridCount);
-            if (window.innerWidth <= 768) {
-                closeMobileMenu();
-            }
-        });
-    });
-
-    function getMediaMtxStreamUrl(cam, streamType = 'main') {
-        const safeId = (cam.id || '').replace(/[^a-zA-Z0-9_\-]/g, '_');
-        
-        let path = cam.mediaMtxPath || safeId;
-        if (streamType === 'sub') {
-            if (cam.mediaMtxSubPath) {
-                path = cam.mediaMtxSubPath;
-            } else if (cam.subStreamUrl && cam.subStreamUrl !== cam.mainStreamUrl) {
-                path = `${safeId}_sub`;
-            }
-        }
-        return `/stream/${path}/stream.m3u8`;
-    }
-
-    function cleanupCameraPlayer(camId) {
-        if (webrtcConnections[camId]) {
-            try { webrtcConnections[camId].close(); } catch(e) {}
-            delete webrtcConnections[camId];
-        }
-        if (hlsInstances[camId]) {
-            try { hlsInstances[camId].destroy(); } catch(e) {}
-            delete hlsInstances[camId];
-        }
-        if (liveSyncTimers[camId]) {
-            clearInterval(liveSyncTimers[camId]);
-            delete liveSyncTimers[camId];
-        }
-    }
-
-    function cleanupAllPlayers() {
-        Object.keys(webrtcConnections).forEach(id => cleanupCameraPlayer(id));
-        webrtcConnections = {};
-        Object.keys(hlsInstances).forEach(id => cleanupCameraPlayer(id));
-        hlsInstances = {};
-        Object.values(liveSyncTimers).forEach(t => clearInterval(t));
-        liveSyncTimers = {};
-    }
-
-    function renderGrid(count) {
-        cleanupAllPlayers();
-
-        if (videoGrid) videoGrid.innerHTML = '';
+    function renderAdminGrid(count) {
+        if (!videoGrid) return;
         videoGrid.className = `video-grid grid-${count}`;
+        destroyHlsPlayers();
+        videoGrid.innerHTML = '';
 
-        // Create an array of active cameras only
-        const activeCameras = cameras.filter(c => c.enabled);
+        if (cameras.length === 0) {
+            videoGrid.innerHTML = `
+                <div class="cam-cell" style="grid-column: 1 / -1; min-height:300px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                    <span style="font-size:2.5rem; margin-bottom:0.75rem;">📹</span>
+                    <h3 style="margin:0 0 0.5rem 0;">Belum Ada Kamera Terpasang</h3>
+                    <p style="color:var(--text-muted); font-size:0.85rem; margin:0 0 1rem 0;">Tambahkan kamera RTSP pertama Anda untuk memulai live streaming.</p>
+                    <button class="btn btn-primary" onclick="document.querySelector('.nav-item[data-target=\\'view-setting-cameras\\']').click()">+ Tambah Kamera Sekarang</button>
+                </div>
+            `;
+            return;
+        }
 
-        for (let i = 0; i < count; i++) {
+        const displayCams = cameras.slice(0, count);
+        displayCams.forEach((cam, idx) => {
             const cell = document.createElement('div');
             cell.className = 'cam-cell';
-            cell.id = `cell-${i}`;
+            cell.id = `cell_${cam.id}`;
 
-            if (activeCameras[i]) {
-                const cam = activeCameras[i];
-                const isSingle = count === 1;
-                const initialStreamType = isSingle ? 'main' : 'sub';
-                const streamUrl = getMediaMtxStreamUrl(cam, initialStreamType);
+            const hlsUrl = `/stream/${cam.mediaMtxPath}/index.m3u8`;
+            const videoId = `cam_video_${cam.id}`;
 
-                cell.dataset.camId = cam.id;
-                cell.dataset.streamType = initialStreamType;
-
-                if (cell) cell.innerHTML = `
-                    <div class="cam-player-wrapper" id="player-wrapper-${cam.id}"></div>
-                    
-                    <!-- Camera State Overlay -->
-                    <div class="cam-state-overlay" id="state-overlay-${cam.id}">
-                        <div class="state-spinner"></div>
-                        <div class="state-title">Menghubungkan MediaMTX...</div>
-                        <div class="state-subtitle">${cam.name} &bull; ${streamUrl}</div>
-                        <div class="state-engine-tag">⚡ MediaMTX WebRTC V8.2 (&lt;0.5s Latency)</div>
-                        <button class="btn-retry" onclick="retryStream('${cam.id}')" style="display:none;" id="btn-retry-${cam.id}">Coba Ulang</button>
+            cell.innerHTML = `
+                <video id="${videoId}" class="cam-player-video" autoplay muted playsinline controls></video>
+                <div class="cam-overlay">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span class="cam-title">${cam.name}</span>
+                        <span class="badge ${cam.enabled ? 'badge-online' : 'badge-offline'}">${cam.enabled ? 'LIVE' : 'DISABLED'}</span>
                     </div>
-
-                    <div class="cam-overlay">
-                        <div class="cam-info">
-                            <span class="pulse-dot" id="dot-${cam.id}"></span>
-                            <span class="cam-name">${cam.name}</span>
-                            <span class="cam-stream-tag" id="tag-${cam.id}">${initialStreamType === 'main' ? 'HD' : 'SD'}</span>
-                            <span class="cam-webrtc-badge" title="WebRTC Low-Latency Live View">&bull; WebRTC</span>
-                        </div>
-                        <div class="cam-controls">
-                            <!-- Live View Selector (HD / SD) -->
-                            <div class="cam-quality-picker">
-                                <select class="quality-select" id="quality-${cam.id}" onchange="changeCameraQuality('${cam.id}', this.value, '${cell.id}')" title="Pilih Kualitas Stream (Live View)">
-                                    <option value="main" ${initialStreamType === 'main' ? 'selected' : ''}>HD / Main</option>
-                                    <option value="sub" ${initialStreamType === 'sub' ? 'selected' : ''}>SD / Sub</option>
-                                </select>
-                            </div>
-                            <button class="btn-icon" onclick="retryStream('${cam.id}')" title="Restart Stream">🔄</button>
-                            <button class="btn-icon" onclick="toggleFullscreen('${cam.id}', 'cell-${i}')" title="Fullscreen (Main Stream)">⛶</button>
-                        </div>
+                    <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+                        <span style="font-size:0.7rem; color:#94a3b8; background:rgba(0,0,0,0.6); padding:2px 6px; border-radius:3px; font-family:monospace;">${cam.transcode || 'passthrough'}</span>
+                        <button class="btn-sm btn-secondary" style="font-size:0.7rem; padding:2px 6px;" onclick="window.restartCameraStream('${cam.id}')">🔄 Restart</button>
                     </div>
-                `;
-                if (videoGrid) videoGrid.appendChild(cell);
-
-                initMediaMtxPlayer(cam.id, initialStreamType, cell, 0);
-
-                if(cell) cell.addEventListener('fullscreenchange', () => {
-                    handleFullscreenChange(cam.id, cell);
-                });
-            } else {
-                if (cell) cell.innerHTML = `
-                    <div class="cam-empty">
-                        <span style="font-size: 1.8rem; opacity: 0.4;">✖</span>
-                        <span>CH ${i + 1} &bull; NO SIGNAL</span>
-                    </div>
-                `;
-                if (videoGrid) videoGrid.appendChild(cell);
-            }
-        }
-    }
-
-    async function initMediaMtxPlayer(camId, streamType, cellElement, retryCount = 0) {
-        const cam = cameras.find(c => c.id === camId);
-        if (!cam) return;
-
-        const wrapper = cellElement.querySelector(`#player-wrapper-${camId}`);
-        if (!wrapper) return;
-
-        const pulseDot = cellElement.querySelector(`#dot-${camId}`) || cellElement.querySelector('.pulse-dot');
-        const stateOverlay = cellElement.querySelector(`#state-overlay-${camId}`);
-        const stateTitle = stateOverlay ? stateOverlay.querySelector('.state-title') : null;
-        const stateSubtitle = stateOverlay ? stateOverlay.querySelector('.state-subtitle') : null;
-        const btnRetry = cellElement.querySelector(`#btn-retry-${camId}`);
-        const spinner = stateOverlay ? stateOverlay.querySelector('.state-spinner') : null;
-
-        const streamUrl = getMediaMtxStreamUrl(cam, streamType);
-        const iframeUrl = streamUrl; // Use exactly as requested: http://[IP_STB]:8889/[camera_id]
-
-        cleanupCameraPlayer(camId);
-
-        const setOverlayState = (mode, title, subtitle) => {
-            if (!stateOverlay) return;
-            if (mode === 'hidden') {
-                stateOverlay.classList.add('hidden');
-                if (stateOverlay) stateOverlay.style.display = 'none';
-                if (pulseDot) pulseDot.classList.remove('offline');
-            } else if (mode === 'loading') {
-                stateOverlay.classList.remove('hidden');
-                if (stateOverlay) stateOverlay.style.display = 'flex';
-                if (spinner) spinner.style.display = 'block';
-                if (btnRetry) btnRetry.style.display = 'none';
-                if (stateTitle) stateTitle.textContent = title || 'Menghubungkan MediaMTX...';
-                if (stateSubtitle && subtitle) if (stateSubtitle) stateSubtitle.textContent = subtitle;
-            } else if (mode === 'error') {
-                stateOverlay.classList.remove('hidden');
-                if (stateOverlay) stateOverlay.style.display = 'flex';
-                if (spinner) spinner.style.display = 'none';
-                if (btnRetry) btnRetry.style.display = 'inline-block';
-                if (stateTitle) stateTitle.textContent = title || 'Stream MediaMTX Tidak Tersedia';
-                if (stateSubtitle && subtitle) if (stateSubtitle) stateSubtitle.textContent = subtitle;
-                if (pulseDot) pulseDot.classList.add('offline');
-            }
-        };
-
-        function isLocalNetwork() {
-            const host = window.location.hostname;
-            return host === 'localhost' || 
-                   host === '127.0.0.1' || 
-                   host.startsWith('192.168.') || 
-                   host.startsWith('10.') || 
-                   /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) ||
-                   host.endsWith('.local');
-        }
-
-        if (!isLocalNetwork()) {
-            setOverlayState('error', 'Akses Stream Dibatasi', 'Streaming video langsung dibatasi demi keamanan & aturan Cloudflare. Gunakan jaringan lokal atau aplikasi P2P khusus untuk melihat stream dari luar.');
-            if (btnRetry) btnRetry.style.display = 'none'; // Sembunyikan tombol retry untuk error ini
-            return;
-        }
-
-        setOverlayState('loading', 'Menghubungkan HLS Stream...', streamUrl);
-
-        renderHlsPlayer();
-
-        function renderHlsPlayer() {
-            if (wrapper) wrapper.innerHTML = `
-                <video 
-                    id="player-${camId}" 
-                    class="cam-player-video" 
-                    autoplay 
-                    muted 
-                    playsinline
-                    style="width: 100%; height: 100%; object-fit: cover; border: none;">
-                </video>
+                </div>
             `;
-            const video = wrapper.querySelector('video');
-            
-            if (Hls.isSupported()) {
-                const hls = new Hls({
-                    manifestLoadingTimeOut: 20000,
-                    manifestLoadingMaxRetry: 3,
-                    levelLoadingTimeOut: 20000,
-                    levelLoadingMaxRetry: 3
-                });
-                
-                hls.loadSource(streamUrl);
-                hls.attachMedia(video);
-                
-                hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                    video.play().catch(e => console.warn('Auto-play prevented', e));
-                    setOverlayState('hidden');
-                });
-                
-                hls.on(Hls.Events.ERROR, function(event, data) {
-                    if (data.fatal) {
-                        switch(data.type) {
-                            case Hls.ErrorTypes.NETWORK_ERROR:
-                                hls.startLoad();
-                                break;
-                            case Hls.ErrorTypes.MEDIA_ERROR:
-                                hls.recoverMediaError();
-                                break;
-                            default:
-                                setOverlayState('error', 'Gagal Memuat HLS Stream', data.details);
-                                hls.destroy();
-                                break;
-                        }
+
+            videoGrid.appendChild(cell);
+
+            if (cam.enabled) {
+                initHlsPlayer(videoId, hlsUrl);
+            }
+        });
+    }
+
+    function initHlsPlayer(elementId, hlsUrl) {
+        const video = document.getElementById(elementId);
+        if (!video) return;
+
+        if (Hls.isSupported()) {
+            const hls = new Hls({
+                liveSyncDurationCount: 2,
+                maxBufferLength: 5,
+                enableWorker: true,
+                lowLatencyMode: true
+            });
+            hls.loadSource(hlsUrl);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                video.play().catch(() => {});
+            });
+            hls.on(Hls.Events.ERROR, (event, data) => {
+                if (data.fatal) {
+                    switch (data.type) {
+                        case Hls.ErrorTypes.NETWORK_ERROR:
+                            hls.startLoad();
+                            break;
+                        case Hls.ErrorTypes.MEDIA_ERROR:
+                            hls.recoverMediaError();
+                            break;
+                        default:
+                            hls.destroy();
+                            break;
                     }
-                });
-                
-                // Save instance for cleanup
-                hlsInstances[camId] = hls;
-                
-            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                if (video) video.src = streamUrl;
-                if(video) video.addEventListener('loadedmetadata', function() {
-                    video.play().catch(e => console.warn('Auto-play prevented', e));
-                    setOverlayState('hidden');
-                });
-                if(video) video.addEventListener('error', function() {
-                    setOverlayState('error', 'Gagal Memuat Stream (Native)', 'Unsupported Format');
-                });
-            } else {
-                setOverlayState('error', 'Browser Tidak Mendukung HLS', 'Gunakan browser modern');
-            }
-        }
-    }
-
-    window.changeCameraQuality = function(camId, targetType, cellId) {
-        const cell = document.getElementById(cellId) || document.querySelector(`.cam-cell[data-cam-id="${camId}"]`);
-        if (!cell) return;
-        const cam = cameras.find(c => c.id === camId);
-        if (!cam) return;
-
-        cell.dataset.streamType = targetType;
-        
-        const tag = cell.querySelector(`#tag-${camId}`);
-        if (tag) tag.textContent = targetType === 'main' ? 'HD' : 'SD';
-
-        const qSelect = cell.querySelector(`#quality-${camId}`);
-        if (qSelect && qSelect.value !== targetType) {
-            if (qSelect) qSelect.value = targetType;
-        }
-
-        console.log(`[MediaMTX Switch] Kamera ${cam.name} beralih ke stream ${targetType.toUpperCase()}`);
-        initMediaMtxPlayer(camId, targetType, cell, 0);
-    };
-
-    window.toggleFullscreen = function(camId, cellId) {
-        const cell = document.getElementById(cellId);
-        if (!cell) return;
-        if (!document.fullscreenElement) {
-            if (cell.requestFullscreen) cell.requestFullscreen();
-            else if (cell.webkitRequestFullscreen) cell.webkitRequestFullscreen();
-        } else {
-            if (document.exitFullscreen) document.exitFullscreen();
-        }
-    };
-
-    function handleFullscreenChange(camId, cell) {
-        const isFull = !!document.fullscreenElement;
-        const currentType = cell.dataset.streamType;
-        const nextType = isFull ? 'main' : (currentGridCount === 1 ? 'main' : 'sub');
-        
-        if (currentType !== nextType) {
-            cell.dataset.streamType = nextType;
-            const tag = cell.querySelector(`#tag-${camId}`);
-            if (tag) tag.textContent = nextType === 'main' ? 'HD' : 'SD';
-            const qSelect = cell.querySelector(`#quality-${camId}`);
-            if (qSelect) qSelect.value = nextType;
-            initMediaMtxPlayer(camId, nextType, cell, 0);
-        }
-    }
-
-    window.retryStream = async function(camId) {
-        try {
-            const cell = document.querySelector(`.cam-cell[data-cam-id="${camId}"]`);
-            if (cell) {
-                const overlay = cell.querySelector('.cam-state-overlay');
-                if (overlay) overlay.classList.remove('hidden');
-                const btn = cell.querySelector('.btn-retry');
-                if (btn) btn.style.display = 'none';
-                const spinner = cell.querySelector('.state-spinner');
-                if (spinner) spinner.style.display = 'block';
-                const title = cell.querySelector('.state-title');
-                if (title) title.textContent = 'Menyinkronkan stream...';
-            }
-
-            await fetch(`/api/cameras/${camId}/restart`, { method: 'POST' });
-            setTimeout(() => {
-                const updatedCell = document.querySelector(`.cam-cell[data-cam-id="${camId}"]`);
-                const cam = cameras.find(c => c.id === camId);
-                if (updatedCell && cam) {
-                    const currentType = updatedCell.dataset.streamType || 'sub';
-                    initMediaMtxPlayer(camId, currentType, updatedCell, 0);
-                }
-            }, 800);
-        } catch (e) {
-            console.error('Gagal restart stream:', e);
-        }
-    };
-
-
-    // --- Playback Management ---
-    let currentZoom = 24; // hours
-    let currentPlaybackDate = '';
-    let currentPlaybackCam = '';
-    let currentPlaybackChunks = []; // array of { startSec, duration, filename }
-    let currentFileStartSec = 0;
-
-    const timelineContainer = document.getElementById('timelineContainer');
-    const scrollArea = document.getElementById('timelineScrollArea');
-    const scale = document.getElementById('timelineScale');
-    const tracks = document.getElementById('timelineTracks');
-    const scrubber = document.getElementById('timelineScrubber');
-    let isDraggingScrubber = false;
-
-    // Zoom Buttons
-    document.querySelectorAll('.z-btn').forEach(btn => {
-        if(btn) btn.addEventListener('click', (e) => {
-            document.querySelectorAll('.z-btn').forEach(b => b.classList.remove('active'));
-            e.target.classList.add('active');
-            currentZoom = parseInt(e.target.getAttribute('data-zoom'));
-            renderTimeline();
-        });
-    });
-
-    function parseTimeToSeconds(filename) {
-        const parts = filename.replace('.mp4','').replace('.ts','').split('-');
-        if (parts.length === 3) {
-            return parseInt(parts[0])*3600 + parseInt(parts[1])*60 + parseInt(parts[2]);
-        }
-        return 0;
-    }
-
-    function renderTimeline() {
-        const widthPercent = (24 / currentZoom) * 100;
-        if (scrollArea) scrollArea.style.width = `${widthPercent}%`;
-
-        if (scale) scale.innerHTML = '';
-        for (let i = 0; i < 24; i++) {
-            const mark = document.createElement('div');
-            mark.className = 'scale-mark';
-            if (mark) mark.textContent = `${i.toString().padStart(2, '0')}:00`;
-            if (scale) scale.appendChild(mark);
-        }
-
-        if (tracks) tracks.innerHTML = '';
-        // Assume default segment is ~15 mins (900s) if not known
-        const chunkDuration = 900; 
-        
-        currentPlaybackChunks.forEach(chunk => {
-            const block = document.createElement('div');
-            block.className = 'track-block';
-            const leftPercent = (chunk.startSec / 86400) * 100;
-            const widthPct = (chunkDuration / 86400) * 100;
-            block.style.left = `${leftPercent}%`;
-            block.style.width = `${widthPct}%`;
-            
-            if(block) block.addEventListener('click', (e) => {
-                e.stopPropagation();
-                playChunk(chunk, 0);
-            });
-            
-            if (tracks) tracks.appendChild(block);
-        });
-    }
-
-    function updateScrubberFromEvent(e) {
-        const rect = scrollArea.getBoundingClientRect();
-        let x = e.clientX - rect.left;
-        if (x < 0) x = 0;
-        if (x > rect.width) x = rect.width;
-        const pct = (x / rect.width) * 100;
-        if (scrubber) scrubber.style.left = `${pct}%`;
-    }
-
-    function seekToScrubberTime() {
-        if (!currentPlaybackCam || !currentPlaybackDate || currentPlaybackChunks.length === 0) return;
-        
-        const pct = parseFloat(scrubber.style.left);
-        const targetSec = (pct / 100) * 86400;
-        
-        const chunkDuration = 900;
-        let foundChunk = currentPlaybackChunks.find(c => targetSec >= c.startSec && targetSec < c.startSec + chunkDuration);
-        
-        if (!foundChunk) {
-            foundChunk = currentPlaybackChunks.slice().reverse().find(c => c.startSec <= targetSec);
-        }
-        
-        if (foundChunk) {
-            let offset = targetSec - foundChunk.startSec;
-            if (offset < 0) offset = 0;
-            playChunk(foundChunk, offset);
-        }
-    }
-
-    function playChunk(chunk, offsetSec) {
-        const camObj = cameras.find(c => c.id === currentPlaybackCam);
-        const camName = camObj ? camObj.name : currentPlaybackCam;
-        
-        currentFileStartSec = chunk.startSec;
-        const timePart = chunk.filename.replace('.mp4', '').replace('.ts', '').replace(/-/g, ':');
-        if (pbTitle) pbTitle.textContent = `Memutar: ${camName} (${currentPlaybackDate} ${timePart})`;
-        
-        if (playbackPlayer) playbackPlayer.src = `/api/recordings/${currentPlaybackCam}/${currentPlaybackDate}/${chunk.filename}`;
-        playbackPlayer.load();
-        
-        playbackPlayer.onloadedmetadata = () => {
-            if (offsetSec > playbackPlayer.duration) offsetSec = 0;
-            playbackPlayer.currentTime = offsetSec;
-            playbackPlayer.play();
-        };
-        
-        if (window.innerWidth <= 768) {
-            closeMobileMenu();
-        }
-    }
-
-    // Interactive scrubber events
-    if(scrollArea) scrollArea.addEventListener('mousedown', (e) => {
-        isDraggingScrubber = true;
-        updateScrubberFromEvent(e);
-    });
-    if(window) window.addEventListener('mousemove', (e) => {
-        if (isDraggingScrubber) updateScrubberFromEvent(e);
-    });
-    if(window) window.addEventListener('mouseup', (e) => {
-        if (isDraggingScrubber) {
-            isDraggingScrubber = false;
-            updateScrubberFromEvent(e);
-            seekToScrubberTime();
-        }
-    });
-
-    // Touch support
-    if(scrollArea) scrollArea.addEventListener('touchstart', (e) => {
-        isDraggingScrubber = true;
-        updateScrubberFromEvent(e.touches[0]);
-    }, {passive: true});
-    if(window) window.addEventListener('touchmove', (e) => {
-        if (isDraggingScrubber) updateScrubberFromEvent(e.touches[0]);
-    }, {passive: true});
-    if(window) window.addEventListener('touchend', (e) => {
-        if (isDraggingScrubber) {
-            isDraggingScrubber = false;
-            seekToScrubberTime();
-        }
-    });
-
-    if(playbackPlayer) playbackPlayer.addEventListener('timeupdate', () => {
-        if (isDraggingScrubber) return; 
-        if (!currentFileStartSec) return;
-        const currentSec = currentFileStartSec + playbackPlayer.currentTime;
-        const pct = (currentSec / 86400) * 100;
-        if (scrubber) scrubber.style.left = `${pct}%`;
-    });
-    
-    if(playbackPlayer) playbackPlayer.addEventListener('ended', () => {
-        const currentIndex = currentPlaybackChunks.findIndex(c => c.startSec === currentFileStartSec);
-        if (currentIndex !== -1 && currentIndex + 1 < currentPlaybackChunks.length) {
-            const nextChunk = currentPlaybackChunks[currentIndex + 1];
-            playChunk(nextChunk, 0);
-        }
-    });
-
-    async function fetchRecordings() {
-        try {
-            const res = await fetch('/api/recordings');
-            recordingsMap = await res.json(); 
-            
-            if (selRecCam) selRecCam.innerHTML = '<option value="">-- Pilih Kamera --</option>';
-            cameras.forEach(c => {
-                const opt = document.createElement('option');
-                if (opt) opt.value = c.id; if (opt) opt.textContent = c.name;
-                if (selRecCam) selRecCam.appendChild(opt);
-            });
-            
-            if (selRecDate) selRecDate.innerHTML = '<option>Pilih Kamera Dulu</option>';
-            if (playbackList) playbackList.innerHTML = '';
-        } catch (err) { console.error(err); }
-    }
-
-    if(selRecCam) selRecCam.addEventListener('change', () => {
-        const camId = selRecCam.value;
-        if (selRecDate) selRecDate.innerHTML = '';
-        
-        if (!camId || !recordingsMap[camId]) {
-            if (selRecDate) selRecDate.innerHTML = '<option>Tidak ada rekaman</option>';
-            if (playbackList) playbackList.innerHTML = '';
-            return;
-        }
-
-        const dates = Object.keys(recordingsMap[camId]).sort().reverse();
-        if (dates.length === 0) {
-            if (selRecDate) selRecDate.innerHTML = '<option>Tidak ada rekaman</option>';
-            if (playbackList) playbackList.innerHTML = '';
-            return;
-        }
-        
-        dates.forEach(d => {
-            const opt = document.createElement('option');
-            if (opt) opt.value = d; if (opt) opt.textContent = d;
-            if (selRecDate) selRecDate.appendChild(opt);
-        });
-        
-        renderPlaybackList();
-    });
-
-    if(selRecDate) selRecDate.addEventListener('change', renderPlaybackList);
-
-    function renderPlaybackList() {
-        if (playbackList) playbackList.innerHTML = '';
-        currentPlaybackChunks = [];
-        
-        const camId = selRecCam.value;
-        const date = selRecDate.value;
-        
-        if (!camId || !date || !recordingsMap[camId] || !recordingsMap[camId][date]) {
-            renderTimeline();
-            return;
-        }
-
-        currentPlaybackCam = camId;
-        currentPlaybackDate = date;
-
-        let files = recordingsMap[camId][date];
-        files.sort(); 
-
-        if(files.length === 0) {
-            if (playbackList) playbackList.innerHTML = '<li>Tidak ada klip</li>';
-            renderTimeline();
-            return;
-        }
-
-        const camObj = cameras.find(c => c.id === camId);
-        const camName = camObj ? camObj.name : camId;
-
-        // Process files for timeline
-        files.forEach(f => {
-            currentPlaybackChunks.push({
-                startSec: parseTimeToSeconds(f),
-                duration: 900,
-                filename: f
-            });
-        });
-        
-        // Sort for list (descending)
-        const sortedDesc = [...files].reverse();
-
-        sortedDesc.forEach(f => {
-            const li = document.createElement('li');
-            const timePart = f.replace('.mp4', '').replace('.ts', '').replace(/-/g, ':');
-            
-            if (li) li.innerHTML = `🎥 <span>${timePart}</span>`;
-            
-            if(li) li.addEventListener('click', () => {
-                const chunk = currentPlaybackChunks.find(c => c.filename === f);
-                if (chunk) {
-                    playChunk(chunk, 0);
                 }
             });
-            
-            if (playbackList) playbackList.appendChild(li);
-        });
-
-        // Update timeline
-        renderTimeline();
-    }
-
-    // --- Modal Management (Settings) ---
-    // replaced with nav routes
-
-    if(btnCloseSettings && modal) btnCloseSettings.addEventListener('click', () => {
-        if (modal) modal.classList.remove('active');
-        resetForm();
-    });
-
-    // Main Modal Tabs
-    stabBtns.forEach(btn => {
-        if(btn) btn.addEventListener('click', (e) => {
-            stabBtns.forEach(b => b.classList.remove('active'));
-            stabPanes.forEach(p => p.classList.remove('active'));
-            btn.classList.add('active');
-            const target = document.getElementById(btn.getAttribute('data-target')); if (target) target.classList.add('active');
-        });
-    });
-
-    // Inner Camera Tabs
-    ctabBtns.forEach(btn => {
-        if(btn) btn.addEventListener('click', (e) => {
-            ctabBtns.forEach(b => b.classList.remove('active'));
-            ctabPanes.forEach(p => p.classList.remove('active'));
-            btn.classList.add('active');
-            const target = document.getElementById(btn.getAttribute('data-target')); if (target) target.classList.add('active');
-        });
-    });
-
-    // --- Armbian Real-time System Monitoring Engine ---
-    async function updateSystemStats() {
-        try {
-            const res = await fetch('/api/system/stats');
-            if (!res.ok) return;
-            const data = await res.json();
-            if (!data) return;
-
-            // 1. CPU Usage (%)
-            const topCpuVal = document.getElementById('topCpuVal');
-            const sideCpuTemp = document.getElementById('sideCpuTemp');
-            let cpuPct = 0;
-            if (data.cpu) {
-                cpuPct = data.cpu.usagePercent || 0;
-                if (topCpuVal) topCpuVal.textContent = `${cpuPct}%`;
-            }
-
-            // 2. RAM Usage (%)
-            const topRamVal = document.getElementById('topRamVal');
-            const sideRam = document.getElementById('sideRam');
-            if (data.ram) {
-                const ramPct = (data.ram.usagePercent !== undefined ? data.ram.usagePercent : data.ram.usedPercent) || 0;
-                if (topRamVal) topRamVal.textContent = `${ramPct}%`;
-                if (sideRam) sideRam.textContent = `${ramPct}% (${data.ram.usedMB}MB / ${data.ram.totalMB}MB)`;
-            }
-
-            // 3. Suhu STB (°C)
-            if (data.temp && sideCpuTemp) {
-                const deg = data.temp.celsius || 0;
-                if (sideCpuTemp) sideCpuTemp.textContent = `${cpuPct}% | ${deg}°C`;
-            }
-
-            // 4. Storage Utama
-            const sideStorageIf = document.getElementById('sideStorageIf');
-            const sideStorage = document.getElementById('sideStorage');
-            if (data.storage) {
-                const diskPct = data.storage.percentUsed || 0;
-                const freeGB = data.storage.freeGB || 0;
-                if (sideStorageIf) sideStorageIf.textContent = data.storage.path || 'Root';
-                if (sideStorage) sideStorage.textContent = `${diskPct}% (${freeGB}GB sisa)`;
-            }
-
-            // 5. Interface Jaringan & Kecepatan
-            const topNetVal = document.getElementById('topNetVal');
-            const sideNetIf = document.getElementById('sideNetIf');
-            const sideNetStatus = document.getElementById('sideNetStatus');
-            if (data.network) {
-                const ifName = data.network.interface || data.network.iface || 'eth0';
-                const rxRate = data.network.rxSpeedFormatted || data.network.downSpeed || '0 KB/s';
-                const txRate = data.network.txSpeedFormatted || data.network.upSpeed || '0 KB/s';
-                
-                if (topNetVal) topNetVal.textContent = `↓ ${rxRate} ↑ ${txRate}`;
-                if (sideNetIf) sideNetIf.textContent = ifName;
-                if (sideNetStatus) sideNetStatus.textContent = `↓ ${rxRate} | ↑ ${txRate}`;
-            }
-        } catch(err) {
-            // Polling gagal secara anggun tanpa mengganggu UI
+            hlsPlayers[elementId] = hls;
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = hlsUrl;
+            video.addEventListener('loadedmetadata', () => {
+                video.play().catch(() => {});
+            });
         }
     }
 
-    function startSystemMonitoring() {
-        if (sysMonitorInterval) clearInterval(sysMonitorInterval);
-        updateSystemStats();
-        // Polling statistik real-time setiap 3 detik
-        sysMonitorInterval = setInterval(updateSystemStats, 3000);
+    function destroyHlsPlayers() {
+        Object.keys(hlsPlayers).forEach(id => {
+            if (hlsPlayers[id]) {
+                hlsPlayers[id].destroy();
+            }
+        });
+        hlsPlayers = {};
     }
 
-    // --- Auto-Detect & Konfigurasi Media Penyimpanan Rekaman (USB/HDD) ---
-    async function fetchStorageDevices() {
-        const selEl = document.getElementById('sysStorageDevice');
-        const customInput = document.getElementById('sysCustomStoragePath');
-        if (!selEl) return;
+    // --- Camera Management Form & List ---
+    function renderModalCameraList() {
+        if (!modalCameraList) return;
+        modalCameraList.innerHTML = '';
 
-        try {
-            if (selEl) selEl.innerHTML = '<option value="">Memindai drive penyimpanan...</option>';
-            const res = await fetch('/api/system/storage-devices');
-            if (!res.ok) throw new Error('Gagal memuat daftar perangkat penyimpanan');
-            const data = await res.json();
-            detectedStorageDevices = data.devices || [];
-
-            if (selEl) selEl.innerHTML = '';
-            const currentPath = data.currentStoragePath || '';
-
-            if (detectedStorageDevices.length === 0) {
-                if (selEl) selEl.innerHTML = '<option value="">Tidak ada media eksternal terdeteksi</option>';
-            } else {
-                detectedStorageDevices.forEach(dev => {
-                    const opt = document.createElement('option');
-                    if (opt) opt.value = dev.mountPath;
-                    const icon = dev.category === 'External' ? '🔌 [USB/HDD]' : (dev.category === 'Internal' ? '💽 [Internal]' : '📁 [Kustom]');
-                    if (opt) opt.textContent = `${icon} ${dev.name} • Sisa: ${dev.freeGB} GB (${dev.percentUsed}% terpakai)`;
-                    if (dev.selected || dev.mountPath === currentPath) {
-                        opt.selected = true;
-                    }
-                    if (selEl) selEl.appendChild(opt);
-                });
-            }
-
-            const customOpt = document.createElement('option');
-            if (customOpt) customOpt.value = '__custom__';
-            if (customOpt) customOpt.textContent = '⚙️ Tentukan Jalur Folder Kustom...';
-            if (selEl) selEl.appendChild(customOpt);
-
-            if (customInput) {
-                if (customInput) customInput.value = currentPath;
-            }
-
-            renderStoragePreview(selEl.value);
-        } catch(err) {
-            if (selEl) selEl.innerHTML = '<option value="">Gagal memindai perangkat</option>';
-        }
-    }
-
-    function renderStoragePreview(selectedPath) {
-        const previewBox = document.getElementById('storageDevicePreview');
-        if (!previewBox) return;
-
-        if (!selectedPath || selectedPath === '__custom__') {
-            if (previewBox) previewBox.style.display = 'none';
+        if (cameras.length === 0) {
+            modalCameraList.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:0.85rem;">Belum ada kamera terdaftar.</div>';
             return;
         }
-
-        const dev = detectedStorageDevices.find(d => d.mountPath === selectedPath);
-        if (!dev) {
-            if (previewBox) previewBox.style.display = 'none';
-            return;
-        }
-
-        if (previewBox) previewBox.style.display = 'block';
-        const nameEl = document.getElementById('stPreviewName');
-        const mountEl = document.getElementById('stPreviewMount');
-        const capEl = document.getElementById('stPreviewCapacity');
-        const freeEl = document.getElementById('stPreviewFree');
-        const fillEl = document.getElementById('stPreviewFill');
-
-        if (nameEl) nameEl.textContent = `Drive: ${dev.name}`;
-        if (mountEl) mountEl.textContent = dev.mountPath;
-        if (capEl) capEl.textContent = `Total: ${dev.totalGB} GB (${dev.percentUsed}% Terpakai)`;
-        if (freeEl) freeEl.textContent = `Sisa: ${dev.freeGB} GB`;
-        if (fillEl) {
-            fillEl.style.width = `${Math.min(100, Math.max(0, dev.percentUsed))}%`;
-            fillEl.style.backgroundColor = dev.percentUsed > 85 ? '#ef4444' : (dev.percentUsed > 65 ? '#f59e0b' : '#3b82f6');
-        }
-    }
-
-    // Storage selection change listener
-    const sysStorageSelect = document.getElementById('sysStorageDevice');
-    if (sysStorageSelect) {
-        if(sysStorageSelect) sysStorageSelect.addEventListener('change', (e) => {
-            const val = e.target.value;
-            const customInput = document.getElementById('sysCustomStoragePath');
-            if (val === '__custom__') {
-                if (customInput) {
-                    customInput.focus();
-                }
-                renderStoragePreview('');
-            } else {
-                if (customInput) {
-                    if (customInput) customInput.value = val;
-                }
-                renderStoragePreview(val);
-            }
-        });
-    }
-
-    const btnRefreshStorage = document.getElementById('btnRefreshStorage');
-    if (btnRefreshStorage) {
-        if(btnRefreshStorage) btnRefreshStorage.addEventListener('click', () => {
-            fetchStorageDevices();
-        });
-    }
-
-    const sysCustomStorageInput = document.getElementById('sysCustomStoragePath');
-    if (sysCustomStorageInput) {
-        if(sysCustomStorageInput) sysCustomStorageInput.addEventListener('input', (e) => {
-            const val = e.target.value.trim();
-            const matched = detectedStorageDevices.find(d => d.mountPath === val);
-            if (matched) {
-                if (sysStorageSelect) sysStorageSelect.value = matched.mountPath;
-                renderStoragePreview(matched.mountPath);
-            } else {
-                if (sysStorageSelect) sysStorageSelect.value = '__custom__';
-                renderStoragePreview('');
-            }
-        });
-    }
-
-    async function fetchSystemSettings() {
-        try {
-            const res = await fetch('/api/settings');
-            const data = await res.json();
-            const el_sysTgBot = document.getElementById('sysTgBot'); if (el_sysTgBot) el_sysTgBot.value = data.telegramBotToken || '';
-            const el_sysTgChat = document.getElementById('sysTgChat'); if (el_sysTgChat) el_sysTgChat.value = data.telegramChatId || '';
-            const el_sysP2pServer = document.getElementById('sysP2pServer'); if (el_sysP2pServer) el_sysP2pServer.value = data.p2pServer || '';
-            
-            const recQ = data.recordingQuality || 'main';
-            const sysRecEl = document.getElementById('sysRecordingQuality');
-            if (sysRecEl) sysRecEl.value = recQ;
-            const globRecEl = document.getElementById('globalRecordingQuality');
-            if (globRecEl) globRecEl.value = recQ;
-
-            const mPort = data.mediamtxPort || 8889;
-            const sysPortEl = document.getElementById('sysMediaMtxPort');
-            if (sysPortEl) sysPortEl.value = mPort;
-            mediamtxPort = mPort;
-
-            const mHost = data.mediamtxHost || '';
-            const sysHostEl = document.getElementById('sysMediaMtxHost');
-            if (sysHostEl) sysHostEl.value = mHost;
-            mediamtxHost = mHost;
-
-            const sysShowTopMonitor = data.showTopMonitor !== undefined ? data.showTopMonitor : false;
-            const topMonEl = document.getElementById('sysShowTopMonitor');
-            if (topMonEl) topMonEl.checked = sysShowTopMonitor;
-            const compactBar = document.getElementById('sysMonitorBarCompact');
-            if (compactBar) compactBar.style.display = sysShowTopMonitor ? 'flex' : 'none';
-
-            const sysNetInterface = data.netInterface || 'auto';
-            const netIfEl = document.getElementById('sysNetInterface');
-            if (netIfEl) netIfEl.value = sysNetInterface;
-
-            const pMode = data.playerMode || 'iframe';
-            const sysPlayerEl = document.getElementById('sysPlayerMode');
-            if (sysPlayerEl) sysPlayerEl.value = pMode;
-            playerMode = pMode;
-
-            if (data.recordingPath) {
-                const customInput = document.getElementById('sysCustomStoragePath');
-                if (customInput) customInput.value = data.recordingPath;
-            }
-        } catch(e) {}
-    }
-
-    const systemForm = document.getElementById('systemForm'); if(systemForm) systemForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const recQ = document.getElementById('sysRecordingQuality')?.value || 'main';
-        const mPort = parseInt(document.getElementById('sysMediaMtxPort')?.value || '8889', 10);
-        const mHost = (document.getElementById('sysMediaMtxHost')?.value || '').trim();
-        const pMode = document.getElementById('sysPlayerMode')?.value || 'iframe';
-        const showTop = document.getElementById('sysShowTopMonitor')?.checked || false;
-        const netIf = document.getElementById('sysNetInterface')?.value || 'auto';
-        const chosenStorage = (document.getElementById('sysCustomStoragePath')?.value || '').trim();
-
-        // 1. Simpan Jalur Penyimpanan Rekaman (USB/HDD) jika ditentukan
-        if (chosenStorage) {
-            try {
-                const storageRes = await fetch('/api/system/storage-devices/select', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ storagePath: chosenStorage })
-                });
-                const storageData = await storageRes.json();
-                if (!storageRes.ok) {
-                    alert(`Peringatan Penyimpanan: ${storageData.error || 'Gagal mengatur jalur penyimpanan'}`);
-                }
-            } catch(stErr) {
-                console.warn('Gagal menyimpan storage:', stErr);
-            }
-        }
-
-        // 2. Simpan Pengaturan Sistem & MediaMTX
-        const payload = {
-            recordingQuality: recQ,
-            mediamtxPort: mPort,
-            mediamtxHost: mHost,
-            playerMode: pMode,
-            showTopMonitor: showTop,
-            netInterface: netIf,
-            recordingPath: chosenStorage,
-            p2pServer: document.getElementById('sysP2pServer').value,
-            telegramBotToken: document.getElementById('sysTgBot').value,
-            telegramChatId: document.getElementById('sysTgChat').value
-        };
-
-        await fetch('/api/settings', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        });
-
-        mediamtxPort = mPort;
-        mediamtxHost = mHost;
-        playerMode = pMode;
-        
-        const compactBar = document.getElementById('sysMonitorBarCompact');
-        if (compactBar) compactBar.style.display = showTop ? 'flex' : 'none';
-
-        const globRecEl = document.getElementById('globalRecordingQuality');
-        if (globRecEl) globRecEl.value = recQ;
-
-        // Segera perbarui monitoring bar
-        updateSystemStats();
-
-        alert('Pengaturan Sistem, MediaMTX, dan Media Penyimpanan Rekaman berhasil disimpan!');
-        renderGrid(currentGridCount);
-    });
-
-    const changePasswordForm = document.getElementById('changePasswordForm');
-    if (changePasswordForm) {
-        if(changePasswordForm) changePasswordForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const oldPassword = document.getElementById('oldPassword').value;
-            const newPassword = document.getElementById('newPassword').value;
-            
-            try {
-                const res = await fetch('/api/auth/change-password', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ oldPassword, newPassword })
-                });
-                const data = await res.json();
-                
-                if (res.ok && data.success) {
-                    alert('Password berhasil diubah. Silakan login kembali.');
-                    await fetch('/api/auth/logout', { method: 'POST' });
-                    window.location.reload();
-                } else {
-                    alert(data.error || 'Gagal mengubah password');
-                }
-            } catch(e) {
-                alert('Terjadi kesalahan saat mengubah password');
-            }
-        });
-    }
-
-    function renderModalList() {
-        const list = document.getElementById('modalCameraList');
-        if (list) list.innerHTML = '';
-        if (cameras.length === 0) { if (list) list.innerHTML = '<div style="padding:1rem;">Belum ada kamera</div>'; return; }
 
         cameras.forEach(cam => {
             const div = document.createElement('div');
-            div.className = 'modal-camera-item';
-            if (!cam.enabled) div.style.opacity = '0.5';
-            
-            if (div) div.innerHTML = `
+            div.className = 'modal-cam-item';
+            div.innerHTML = `
                 <div>
-                    <strong>${cam.name}</strong> 
-                    ${!cam.enabled ? '<span class="badge" style="background:var(--text-muted);">OFF</span>' : ''}
-                    ${cam.recordMode === 'continuous' ? '<span class="badge" style="background:var(--accent);">REC</span>' : ''}
-                    <br>
-                    <small style="color:var(--text-muted);">${cam.mainStreamUrl}</small>
+                    <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.25rem;">
+                        <strong>${cam.name}</strong>
+                        <span class="badge ${cam.enabled ? 'badge-online' : 'badge-offline'}">${cam.enabled ? 'ACTIVE' : 'OFF'}</span>
+                        ${cam.recordMode === 'continuous' ? '<span class="badge" style="background:#dc2626; color:white;">REC</span>' : ''}
+                    </div>
+                    <small style="color:var(--text-muted); font-family:monospace; display:block;">${cam.mainStreamUrl}</small>
                 </div>
-                <div class="cam-actions">
-                    <button class="btn-sm btn-edit" onclick="editCamera('${cam.id}')">Edit</button>
-                    <button class="btn-sm btn-delete" onclick="deleteCamera('${cam.id}')">Hapus</button>
+                <div style="display:flex; gap:0.5rem;">
+                    <button class="btn-sm btn-edit" onclick="window.editCamera('${cam.id}')">Edit</button>
+                    <button class="btn-sm btn-secondary" onclick="window.restartCameraStream('${cam.id}')">Restart Stream</button>
+                    <button class="btn-sm btn-delete" onclick="window.deleteCamera('${cam.id}')">Hapus</button>
                 </div>
             `;
-            if (list) list.appendChild(div);
+            modalCameraList.appendChild(div);
         });
     }
 
     window.editCamera = function(id) {
         const cam = cameras.find(c => c.id === id);
-        if (cam) {
-            const el_camId = document.getElementById('camId'); if (el_camId) el_camId.value = cam.id;
-            const el2_camEnabled = document.getElementById('camEnabled'); if (el2_camEnabled) el2_camEnabled.checked = cam.enabled;
-            const el_camName = document.getElementById('camName'); if (el_camName) el_camName.value = cam.name;
-            
-            const el_camMainUrl = document.getElementById('camMainUrl'); if (el_camMainUrl) el_camMainUrl.value = cam.mainStreamUrl;
-            const el_camSubUrl = document.getElementById('camSubUrl'); if (el_camSubUrl) el_camSubUrl.value = cam.subStreamUrl !== cam.mainStreamUrl ? cam.subStreamUrl : '';
-            if (document.getElementById('camTranscode')) {
-                const el_camTranscode = document.getElementById('camTranscode'); if (el_camTranscode) el_camTranscode.value = cam.transcode || 'auto';
-            }
-            
-            const el_camRecordMode = document.getElementById('camRecordMode'); if (el_camRecordMode) el_camRecordMode.value = cam.recordMode;
-            const el_camStoragePath = document.getElementById('camStoragePath'); if (el_camStoragePath) el_camStoragePath.value = cam.storagePath.includes('public/recordings') ? '' : cam.storagePath;
-            const el_camMaxDays = document.getElementById('camMaxDays'); if (el_camMaxDays) el_camMaxDays.value = cam.maxStorageDays;
-            const el_camMaxGB = document.getElementById('camMaxGB'); if (el_camMaxGB) el_camMaxGB.value = cam.maxFolderSizeGB;
-            const el_camSegmentSec = document.getElementById('camSegmentSec'); if (el_camSegmentSec) el_camSegmentSec.value = cam.segmentDurationSec;
+        if (!cam) return;
 
-            const formTitle = document.getElementById('formTitle'); if(formTitle) if (formTitle) formTitle.textContent = `Edit Kamera: ${cam.name}`;
-            if (btnCancelEdit) btnCancelEdit.style.display = 'block';
-            
-            // Switch to General Tab automatically
-            ctabBtns[0].click();
-        }
+        document.getElementById('camId').value = cam.id;
+        document.getElementById('camEnabled').checked = cam.enabled !== false;
+        document.getElementById('camName').value = cam.name || '';
+        document.getElementById('camMainUrl').value = cam.mainStreamUrl || '';
+        document.getElementById('camSubUrl').value = (cam.subStreamUrl && cam.subStreamUrl !== cam.mainStreamUrl) ? cam.subStreamUrl : '';
+        document.getElementById('camTranscode').value = cam.transcode || 'auto';
+        document.getElementById('camRecordMode').value = cam.recordMode || 'continuous';
+        document.getElementById('camSegmentSec').value = cam.segmentDurationSec || 900;
+        document.getElementById('camStoragePath').value = cam.storagePath || '';
+        document.getElementById('camMaxDays').value = cam.maxStorageDays || 7;
+        document.getElementById('camMaxGB').value = cam.maxFolderSizeGB || 10;
+
+        if (formTitle) formTitle.textContent = `Edit Kamera: ${cam.name}`;
+        if (btnCancelEdit) btnCancelEdit.style.display = 'inline-block';
+
+        const generalTabBtn = document.querySelector('.ctab-btn[data-target="ctab-general"]');
+        if (generalTabBtn) generalTabBtn.click();
+        if (cameraForm) cameraForm.scrollIntoView({ behavior: 'smooth' });
     };
 
-    function resetForm() {
+    function resetCameraForm() {
+        if (!cameraForm) return;
         cameraForm.reset();
-        const el_camId = document.getElementById('camId'); if (el_camId) el_camId.value = '';
-        if (document.getElementById('camTranscode')) {
-            const el_camTranscode = document.getElementById('camTranscode'); if (el_camTranscode) el_camTranscode.value = 'auto';
-        }
-        const formTitle = document.getElementById('formTitle'); if(formTitle) if (formTitle) formTitle.textContent = "Tambah / Edit Kamera";
+        document.getElementById('camId').value = '';
+        document.getElementById('camEnabled').checked = true;
+        document.getElementById('camTranscode').value = 'auto';
+        document.getElementById('camRecordMode').value = 'continuous';
+        document.getElementById('camSegmentSec').value = '900';
+        document.getElementById('camMaxDays').value = '7';
+        document.getElementById('camMaxGB').value = '10';
+
+        if (formTitle) formTitle.textContent = 'Tambah / Edit Kamera';
         if (btnCancelEdit) btnCancelEdit.style.display = 'none';
-        ctabBtns[0].click();
+
+        const generalTabBtn = document.querySelector('.ctab-btn[data-target="ctab-general"]');
+        if (generalTabBtn) generalTabBtn.click();
     }
 
-    if(btnCancelEdit) btnCancelEdit.addEventListener('click', resetForm);
+    if (btnCancelEdit) btnCancelEdit.addEventListener('click', resetCameraForm);
 
-    if(cameraForm) cameraForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const id = document.getElementById('camId').value;
-        const payload = {
-            name: document.getElementById('camName').value,
-            enabled: document.getElementById('camEnabled').checked,
-            mainStreamUrl: document.getElementById('camMainUrl').value,
-            subStreamUrl: document.getElementById('camSubUrl').value,
-            transcode: document.getElementById('camTranscode') ? document.getElementById('camTranscode').value : 'auto',
-            recordMode: document.getElementById('camRecordMode').value,
-            storagePath: document.getElementById('camStoragePath').value,
-            maxStorageDays: document.getElementById('camMaxDays').value,
-            maxFolderSizeGB: document.getElementById('camMaxGB').value,
-            segmentDurationSec: document.getElementById('camSegmentSec').value
-        };
+    if (cameraForm) {
+        cameraForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('camId').value.trim();
+            const payload = {
+                name: document.getElementById('camName').value.trim(),
+                enabled: document.getElementById('camEnabled').checked,
+                mainStreamUrl: document.getElementById('camMainUrl').value.trim(),
+                subStreamUrl: document.getElementById('camSubUrl').value.trim(),
+                transcode: document.getElementById('camTranscode').value,
+                recordMode: document.getElementById('camRecordMode').value,
+                segmentDurationSec: parseInt(document.getElementById('camSegmentSec').value, 10) || 900,
+                storagePath: document.getElementById('camStoragePath').value.trim(),
+                maxStorageDays: parseInt(document.getElementById('camMaxDays').value, 10) || 7,
+                maxFolderSizeGB: parseFloat(document.getElementById('camMaxGB').value) || 10
+            };
 
-        try {
             const method = id ? 'PUT' : 'POST';
             const url = id ? `/api/cameras/${id}` : '/api/cameras';
-            
-            await fetch(url, {
-                method: method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            
-            resetForm();
-            fetchCameras();
-        } catch (err) { alert('Gagal menyimpan kamera'); }
-    });
 
-    window.deleteCamera = async function(id) {
-        if(confirm('Yakin ingin menghapus kamera ini? Semua pengaturan akan dihapus (File MP4 di disk tetap aman).')) {
             try {
-                await fetch(`/api/cameras/${id}`, { method: 'DELETE' });
+                const res = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    alert('Kamera berhasil disimpan dan MediaMTX telah disinkronkan!');
+                    resetCameraForm();
+                    fetchCameras();
+                } else {
+                    alert(`Gagal menyimpan kamera: ${data.error || 'Unknown error'}`);
+                }
+            } catch (err) {
+                alert('Kesalahan koneksi saat menyimpan kamera.');
+            }
+        });
+    }
+
+    window.restartCameraStream = async function(id) {
+        try {
+            const res = await fetch(`/api/cameras/${id}/restart`, { method: 'POST' });
+            if (res.ok) {
+                alert('Stream kamera di-restart.');
                 fetchCameras();
-            } catch (err) { alert('Gagal menghapus kamera'); }
+            }
+        } catch (err) {
+            alert('Gagal me-restart stream.');
         }
     };
 
-    // Mulai eksekusi sudah ditangani oleh checkAuth()
+    window.deleteCamera = async function(id) {
+        if (!confirm('Apakah Anda yakin ingin menghapus kamera ini? Konfigurasi stream MediaMTX akan segera diperbarui.')) {
+            return;
+        }
+        try {
+            const res = await fetch(`/api/cameras/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                alert('Kamera berhasil dihapus.');
+                fetchCameras();
+            } else {
+                alert('Gagal menghapus kamera.');
+            }
+        } catch (err) {
+            alert('Kesalahan koneksi saat menghapus kamera.');
+        }
+    };
+
+    // --- Storage Devices & Global Settings ---
+    async function fetchStorageDevices() {
+        if (!sysStorageDevice) return;
+        sysStorageDevice.innerHTML = '<option value="">Memindai drive penyimpanan...</option>';
+
+        try {
+            const res = await fetch('/api/system/storage-devices');
+            if (!res.ok) throw new Error('Gagal mendeteksi storage');
+            const data = await res.json();
+            detectedStorageDevices = data.devices || [];
+
+            sysStorageDevice.innerHTML = '';
+            const currentPath = data.currentStoragePath || '';
+
+            if (detectedStorageDevices.length === 0) {
+                sysStorageDevice.innerHTML = '<option value="">Tidak ada media eksternal (USB/HDD) terdeteksi</option>';
+            } else {
+                detectedStorageDevices.forEach(dev => {
+                    const opt = document.createElement('option');
+                    opt.value = dev.mountPath;
+                    const icon = dev.category === 'External' ? '🔌 [USB/HDD]' : (dev.category === 'Internal' ? '💽 [Internal]' : '📁 [Kustom]');
+                    opt.textContent = `${icon} ${dev.name} • Sisa: ${dev.freeGB} GB (${dev.percentUsed}% terpakai)`;
+                    if (dev.selected || dev.mountPath === currentPath) {
+                        opt.selected = true;
+                    }
+                    sysStorageDevice.appendChild(opt);
+                });
+            }
+
+            const customOpt = document.createElement('option');
+            customOpt.value = '__custom__';
+            customOpt.textContent = '⚙️ Tentukan Jalur Folder Kustom...';
+            sysStorageDevice.appendChild(customOpt);
+
+            if (sysCustomStoragePath) sysCustomStoragePath.value = currentPath;
+            renderStoragePreview(sysStorageDevice.value);
+        } catch (err) {
+            sysStorageDevice.innerHTML = '<option value="">Gagal memindai media penyimpanan</option>';
+        }
+    }
+
+    function renderStoragePreview(selectedPath) {
+        if (!storageDevicePreview) return;
+        if (!selectedPath || selectedPath === '__custom__') {
+            storageDevicePreview.style.display = 'none';
+            return;
+        }
+
+        const dev = detectedStorageDevices.find(d => d.mountPath === selectedPath);
+        if (!dev) {
+            storageDevicePreview.style.display = 'none';
+            return;
+        }
+
+        storageDevicePreview.style.display = 'block';
+        const stPreviewName = document.getElementById('stPreviewName');
+        const stPreviewMount = document.getElementById('stPreviewMount');
+        const stPreviewCapacity = document.getElementById('stPreviewCapacity');
+        const stPreviewFree = document.getElementById('stPreviewFree');
+        const stPreviewFill = document.getElementById('stPreviewFill');
+
+        if (stPreviewName) stPreviewName.textContent = `Drive: ${dev.name}`;
+        if (stPreviewMount) stPreviewMount.textContent = dev.mountPath;
+        if (stPreviewCapacity) stPreviewCapacity.textContent = `Total: ${dev.totalGB} GB (${dev.percentUsed}% terpakai)`;
+        if (stPreviewFree) stPreviewFree.textContent = `Sisa: ${dev.freeGB} GB`;
+        if (stPreviewFill) {
+            stPreviewFill.style.width = `${Math.min(100, Math.max(0, dev.percentUsed))}%`;
+            stPreviewFill.style.backgroundColor = dev.percentUsed > 85 ? '#ef4444' : (dev.percentUsed > 65 ? '#f59e0b' : '#3b82f6');
+        }
+    }
+
+    if (sysStorageDevice) {
+        sysStorageDevice.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val === '__custom__') {
+                if (sysCustomStoragePath) sysCustomStoragePath.focus();
+                renderStoragePreview('');
+            } else {
+                if (sysCustomStoragePath) sysCustomStoragePath.value = val;
+                renderStoragePreview(val);
+            }
+        });
+    }
+
+    if (btnRefreshStorage) {
+        btnRefreshStorage.addEventListener('click', () => fetchStorageDevices());
+    }
+
+    if (globalStorageForm) {
+        globalStorageForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const storagePath = (sysCustomStoragePath ? sysCustomStoragePath.value : '').trim();
+            const recQuality = sysRecordingQuality ? sysRecordingQuality.value : 'main';
+
+            try {
+                if (storagePath) {
+                    await fetch('/api/system/storage-devices/select', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ storagePath })
+                    });
+                }
+
+                await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        recordingPath: storagePath,
+                        recordingQuality: recQuality
+                    })
+                });
+
+                alert('Pengaturan media penyimpanan dan kualitas rekaman berhasil disimpan!');
+                fetchStorageDevices();
+            } catch (err) {
+                alert('Gagal menyimpan preferensi storage.');
+            }
+        });
+    }
+
+    // --- System & Network Settings Form ---
+    async function fetchSystemSettings() {
+        try {
+            const res = await fetch('/api/settings');
+            if (res.ok) {
+                const s = await res.json();
+                const sysNetInterface = document.getElementById('sysNetInterface');
+                const sysMediaMtxPort = document.getElementById('sysMediaMtxPort');
+                const sysPlayerMode = document.getElementById('sysPlayerMode');
+                const sysTgBot = document.getElementById('sysTgBot');
+                const sysTgChat = document.getElementById('sysTgChat');
+                if (sysNetInterface) sysNetInterface.value = s.netInterface || 'auto';
+                if (sysMediaMtxPort) sysMediaMtxPort.value = s.mediamtxPort || 8889;
+                if (sysPlayerMode) sysPlayerMode.value = s.playerMode || 'iframe';
+                if (sysTgBot) sysTgBot.value = s.telegramBotToken || '';
+                if (sysTgChat) sysTgChat.value = s.telegramChatId || '';
+                if (sysRecordingQuality) sysRecordingQuality.value = s.recordingQuality || 'main';
+            }
+        } catch (err) {}
+    }
+
+    if (systemForm) {
+        systemForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {
+                netInterface: document.getElementById('sysNetInterface').value,
+                mediamtxPort: parseInt(document.getElementById('sysMediaMtxPort').value, 10) || 8889,
+                playerMode: document.getElementById('sysPlayerMode').value,
+                telegramBotToken: document.getElementById('sysTgBot').value.trim(),
+                telegramChatId: document.getElementById('sysTgChat').value.trim()
+            };
+
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    alert('Konfigurasi sistem berhasil disimpan dan MediaMTX telah diperbarui.');
+                } else {
+                    alert('Gagal menyimpan konfigurasi sistem.');
+                }
+            } catch (err) {
+                alert('Terjadi kesalahan koneksi.');
+            }
+        });
+    }
+
+    // --- User Management (Klien Mobile) ---
+    if (btnToggleAddUser) {
+        btnToggleAddUser.addEventListener('click', () => {
+            const isHidden = boxAddUserForm.style.display === 'none';
+            boxAddUserForm.style.display = isHidden ? 'block' : 'none';
+            btnToggleAddUser.textContent = isHidden ? '✕ Tutup Form' : '+ Buat Akun User Baru';
+        });
+    }
+
+    if (btnCancelAddUser) {
+        btnCancelAddUser.addEventListener('click', () => {
+            boxAddUserForm.style.display = 'none';
+            btnToggleAddUser.textContent = '+ Buat Akun User Baru';
+            addUserForm.reset();
+        });
+    }
+
+    async function loadUsersList() {
+        if (!userTableBody) return;
+        try {
+            const res = await fetch('/api/admin/users');
+            if (!res.ok) throw new Error('Gagal mengambil daftar user');
+            const data = await res.json();
+            const users = data.users || [];
+
+            if (users.length === 0) {
+                userTableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:1.5rem; color:var(--text-muted);">Belum ada akun user klien. Klik "+ Buat Akun User Baru".</td></tr>';
+                return;
+            }
+
+            userTableBody.innerHTML = users.map(u => `
+                <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:0.75rem; font-family:monospace; color:var(--text-muted); font-size:0.8rem;">${u.id}</td>
+                    <td style="padding:0.75rem; font-weight:600; color:#f8fafc;">${u.name}</td>
+                    <td style="padding:0.75rem; color:#60a5fa; font-family:monospace;">${u.username}</td>
+                    <td style="padding:0.75rem; font-size:0.8rem; color:var(--text-muted);">${u.createdAt ? new Date(u.createdAt).toLocaleDateString('id-ID') : '-'}</td>
+                    <td style="padding:0.75rem; text-align:right;">
+                        <button class="btn-sm btn-delete" onclick="window.deleteUser('${u.id}', '${u.username}')">Hapus</button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (err) {
+            userTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:1.5rem; color:var(--accent);">Gagal memuat user: ${err.message}</td></tr>`;
+        }
+    }
+
+    if (addUserForm) {
+        addUserForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('newUserName').value.trim();
+            const username = document.getElementById('newUserUsername').value.trim();
+            const password = document.getElementById('newUserPassword').value;
+
+            if (password.length < 4) {
+                alert('Password user minimal 4 karakter!');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/admin/users', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, username, password })
+                });
+                const data = await res.json();
+
+                if (res.ok && data.success) {
+                    alert(`Akun User '${username}' berhasil dibuat!`);
+                    addUserForm.reset();
+                    boxAddUserForm.style.display = 'none';
+                    btnToggleAddUser.textContent = '+ Buat Akun User Baru';
+                    loadUsersList();
+                } else {
+                    alert(data.error || 'Gagal membuat user.');
+                }
+            } catch (err) {
+                alert('Terjadi kesalahan jaringan.');
+            }
+        });
+    }
+
+    window.deleteUser = async function(id, username) {
+        if (!confirm(`Apakah Anda yakin ingin menghapus akun User '${username}'?`)) return;
+        try {
+            const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                alert('Akun user dihapus.');
+                loadUsersList();
+            } else {
+                alert('Gagal menghapus user.');
+            }
+        } catch (err) {
+            alert('Kesalahan koneksi.');
+        }
+    };
+
+    // --- Change Password Form ---
+    if (changePasswordForm) {
+        changePasswordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const oldPassword = document.getElementById('oldPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+
+            try {
+                const res = await fetch('/api/auth/change-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ oldPassword, newPassword })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    alert('Password berhasil diperbarui. Silakan login kembali.');
+                    handleLogout();
+                } else {
+                    alert(data.error || 'Gagal memperbarui password.');
+                }
+            } catch (err) {
+                alert('Terjadi kesalahan jaringan.');
+            }
+        });
+    }
+
+    // --- Playback Logic (Admin) ---
+    function populateCameraSelects() {
+        const selects = [selRecCam, mSelRecCam].filter(Boolean);
+        selects.forEach(sel => {
+            sel.innerHTML = '';
+            if (cameras.length === 0) {
+                sel.innerHTML = '<option value="">Belum ada kamera</option>';
+            } else {
+                cameras.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = c.name;
+                    sel.appendChild(opt);
+                });
+            }
+        });
+    }
+
+    if (btnFetchRecordings) {
+        btnFetchRecordings.addEventListener('click', async () => {
+            const camId = selRecCam ? selRecCam.value : '';
+            const date = selRecDate ? selRecDate.value : '';
+            if (!camId || !date) {
+                alert('Silakan pilih kamera dan tanggal!');
+                return;
+            }
+
+            if (playbackList) playbackList.innerHTML = '<li style="padding:1rem; text-align:center; color:var(--text-muted);">Mencari klip rekaman...</li>';
+
+            try {
+                const res = await fetch(`/api/recordings?camId=${camId}&date=${date}`);
+                const data = await res.json();
+                const clips = data.recordings || [];
+
+                if (clipCount) clipCount.textContent = `${clips.length} Klip`;
+
+                if (clips.length === 0) {
+                    playbackList.innerHTML = '<li style="padding:1rem; text-align:center; color:var(--text-muted); font-size:0.85rem;">Tidak ada rekaman ditemukan untuk tanggal ini.</li>';
+                    return;
+                }
+
+                playbackList.innerHTML = clips.map(clip => `
+                    <li class="playback-item" data-url="${clip.url}" data-name="${clip.filename}">
+                        <div>
+                            <strong>${clip.filename}</strong>
+                            <div style="font-size:0.75rem; color:var(--text-muted);">${clip.sizeFormatted || ''} &bull; ${clip.time || ''}</div>
+                        </div>
+                        <span style="color:#60a5fa; font-size:0.9rem;">▶</span>
+                    </li>
+                `).join('');
+
+                document.querySelectorAll('#playbackList .playback-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        document.querySelectorAll('#playbackList .playback-item').forEach(i => i.classList.remove('active'));
+                        item.classList.add('active');
+                        const url = item.getAttribute('data-url');
+                        const name = item.getAttribute('data-name');
+                        if (playbackPlayer) {
+                            playbackPlayer.src = url;
+                            playbackPlayer.play().catch(() => {});
+                        }
+                        if (pbTitle) pbTitle.textContent = `Memutar: ${name}`;
+                    });
+                });
+            } catch (err) {
+                playbackList.innerHTML = '<li style="padding:1rem; text-align:center; color:var(--accent);">Gagal memuat rekaman.</li>';
+            }
+        });
+    }
+
+    // --- System Logs Fetch ---
+    async function fetchLogs() {
+        if (!logsContainer) return;
+        logsContainer.textContent = 'Memuat logs...';
+        try {
+            const res = await fetch('/api/system/logs');
+            const data = await res.json();
+            const logs = data.logs || [];
+            if (logs.length === 0) {
+                logsContainer.textContent = 'Belum ada log tercatat.';
+            } else {
+                logsContainer.innerHTML = logs.map(l => {
+                    const time = l.timestamp ? new Date(l.timestamp).toLocaleTimeString('id-ID') : '';
+                    const levelColor = l.level === 'ERROR' ? '#f87171' : (l.level === 'WARN' ? '#fbbf24' : '#34d399');
+                    return `<div><span style="color:#64748b;">[${time}]</span> <span style="color:${levelColor}; font-weight:600;">[${l.level}]</span> ${l.message}</div>`;
+                }).join('');
+                logsContainer.scrollTop = logsContainer.scrollHeight;
+            }
+        } catch (err) {
+            logsContainer.textContent = 'Gagal memuat logs.';
+        }
+    }
+
+    if (btnRefreshLogs) btnRefreshLogs.addEventListener('click', fetchLogs);
+
+    // =========================================================================
+    // 3. USER (MOBILE CLIENT PWA) LOGIC
+    // =========================================================================
+    function initMobileUserApp() {
+        initMobileBottomNav();
+        fetchCamerasForMobile();
+
+        const today = new Date().toISOString().split('T')[0];
+        if (mSelRecDate) mSelRecDate.value = today;
+
+        if (btnMRefreshStreams) {
+            btnMRefreshStreams.addEventListener('click', fetchCamerasForMobile);
+        }
+
+        // Mobile Grid Buttons
+        document.querySelectorAll('.m-grid-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.m-grid-btn').forEach(b => {
+                    b.classList.remove('active');
+                    b.style.background = '';
+                    b.style.color = '';
+                });
+                btn.classList.add('active');
+                btn.style.background = '#10b981';
+                btn.style.color = 'white';
+                mCurrentGridCount = parseInt(btn.getAttribute('data-mgrid'), 10) || 1;
+                renderMobileGrid(mCurrentGridCount);
+            });
+        });
+
+        // Mobile Playback Search
+        if (mBtnFetchRecordings) {
+            mBtnFetchRecordings.addEventListener('click', async () => {
+                const camId = mSelRecCam ? mSelRecCam.value : '';
+                const date = mSelRecDate ? mSelRecDate.value : '';
+                if (!camId || !date) {
+                    alert('Pilih kamera dan tanggal!');
+                    return;
+                }
+
+                mPlaybackList.innerHTML = '<li style="padding:1rem; text-align:center; color:var(--text-muted);">Mencari rekaman...</li>';
+
+                try {
+                    const res = await fetch(`/api/recordings?camId=${camId}&date=${date}`);
+                    const data = await res.json();
+                    const clips = data.recordings || [];
+
+                    if (clips.length === 0) {
+                        mPlaybackList.innerHTML = '<li style="padding:1rem; text-align:center; color:var(--text-muted); font-size:0.8rem;">Tidak ada klip rekaman.</li>';
+                        return;
+                    }
+
+                    mPlaybackList.innerHTML = clips.map(clip => `
+                        <li class="playback-item" data-url="${clip.url}" data-name="${clip.filename}">
+                            <div>
+                                <strong>${clip.filename}</strong>
+                                <div style="font-size:0.7rem; color:var(--text-muted);">${clip.sizeFormatted || ''}</div>
+                            </div>
+                            <span style="color:#10b981;">▶</span>
+                        </li>
+                    `).join('');
+
+                    document.querySelectorAll('#mPlaybackList .playback-item').forEach(item => {
+                        item.addEventListener('click', () => {
+                            document.querySelectorAll('#mPlaybackList .playback-item').forEach(i => i.classList.remove('active'));
+                            item.classList.add('active');
+                            const url = item.getAttribute('data-url');
+                            if (mPlaybackPlayer) {
+                                mPlaybackPlayer.src = url;
+                                mPlaybackPlayer.play().catch(() => {});
+                            }
+                        });
+                    });
+                } catch (err) {
+                    mPlaybackList.innerHTML = '<li style="padding:1rem; text-align:center; color:var(--accent);">Gagal memuat klip.</li>';
+                }
+            });
+        }
+
+        // Mobile Change Password
+        if (mChangePasswordForm) {
+            mChangePasswordForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const oldPassword = document.getElementById('mOldPassword').value;
+                const newPassword = document.getElementById('mNewPassword').value;
+
+                try {
+                    const res = await fetch('/api/auth/change-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ oldPassword, newPassword })
+                    });
+                    const data = await res.json();
+                    if (res.ok && data.success) {
+                        alert('Password berhasil diganti. Silakan login kembali.');
+                        handleLogout();
+                    } else {
+                        alert(data.error || 'Gagal mengubah password.');
+                    }
+                } catch (err) {
+                    alert('Terjadi kesalahan jaringan.');
+                }
+            });
+        }
+    }
+
+    function initMobileBottomNav() {
+        const navItems = document.querySelectorAll('.mobile-bottom-nav .mobile-nav-item');
+        const views = document.querySelectorAll('.mobile-view');
+
+        navItems.forEach(item => {
+            item.addEventListener('click', () => {
+                navItems.forEach(n => n.classList.remove('active'));
+                views.forEach(v => v.classList.remove('active'));
+
+                item.classList.add('active');
+                const targetId = item.getAttribute('data-mtarget');
+                const targetEl = document.getElementById(targetId);
+                if (targetEl) targetEl.classList.add('active');
+            });
+        });
+    }
+
+    async function fetchCamerasForMobile() {
+        try {
+            const res = await fetch('/api/cameras');
+            if (res.status === 401) {
+                window.location.reload();
+                return;
+            }
+            const data = await res.json();
+            cameras = data.cameras || [];
+
+            renderMobileGrid(mCurrentGridCount);
+            renderMobileCameraCards();
+            populateCameraSelects();
+        } catch (err) {
+            console.error('Gagal mengambil kamera mobile', err);
+        }
+    }
+
+    function renderMobileGrid(count) {
+        if (!mVideoGrid) return;
+        mVideoGrid.className = `video-grid grid-${count}`;
+        mVideoGrid.innerHTML = '';
+
+        if (cameras.length === 0) {
+            mVideoGrid.innerHTML = `
+                <div class="cam-cell" style="padding:2rem; text-align:center;">
+                    <p style="color:var(--text-muted); font-size:0.85rem;">Belum ada kamera yang ditugaskan kepada Anda.</p>
+                </div>
+            `;
+            return;
+        }
+
+        const displayCams = cameras.slice(0, count);
+        displayCams.forEach(cam => {
+            const cell = document.createElement('div');
+            cell.className = 'cam-cell';
+            const hlsUrl = `/stream/${cam.mediaMtxPath}/index.m3u8`;
+            const videoId = `m_vid_${cam.id}`;
+
+            cell.innerHTML = `
+                <video id="${videoId}" class="cam-player-video" autoplay muted playsinline controls></video>
+                <div class="cam-overlay">
+                    <span class="cam-title">${cam.name}</span>
+                    <span class="badge ${cam.enabled ? 'badge-online' : 'badge-offline'}">${cam.enabled ? 'LIVE' : 'OFF'}</span>
+                </div>
+            `;
+            mVideoGrid.appendChild(cell);
+
+            if (cam.enabled) {
+                initHlsPlayer(videoId, hlsUrl);
+            }
+        });
+    }
+
+    function renderMobileCameraCards() {
+        if (!mCameraCardsList) return;
+        mCameraCardsList.innerHTML = '';
+
+        if (cameras.length === 0) {
+            mCameraCardsList.innerHTML = '<div style="padding:1rem; text-align:center; color:var(--text-muted); font-size:0.85rem;">Tidak ada kamera tersedia.</div>';
+            return;
+        }
+
+        cameras.forEach(cam => {
+            const card = document.createElement('div');
+            card.className = 'camera-form-section';
+            card.style.padding = '1rem';
+            card.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <strong style="font-size:0.95rem; display:block;">${cam.name}</strong>
+                        <span style="font-size:0.75rem; color:var(--text-muted);">Mode: ${cam.recordMode === 'continuous' ? 'Rekam Aktif' : 'Live Only'}</span>
+                    </div>
+                    <span class="badge ${cam.enabled ? 'badge-online' : 'badge-offline'}">${cam.enabled ? 'ONLINE' : 'OFFLINE'}</span>
+                </div>
+            `;
+            mCameraCardsList.appendChild(card);
+        });
+    }
+
+    // Mulai Eksekusi Autentikasi
+    checkAuth();
 });

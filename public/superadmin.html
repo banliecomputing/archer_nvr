@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Archer NVR V8.7 - Superadmin Global Console</title>
+    <link rel="stylesheet" href="style.css">
+    <meta name="theme-color" content="#0f172a">
+</head>
+<body style="overflow-y:auto; display:block; min-height:100vh;">
+    <div id="saAuthOverlay" class="auth-overlay" style="display:flex;">
+        <div class="auth-card" style="max-width:440px;">
+            <div class="brand" style="justify-content:center; border:none; padding-bottom:0.5rem; display:flex; align-items:center; gap:0.5rem;">
+                <span style="font-size:1.8rem;">⚡</span>
+                <h2 style="margin:0; font-size:1.3rem;">Archer NVR <span class="badge" style="background:#8b5cf6; font-size:0.75rem; padding:2px 8px; border-radius:4px;">V8.7 Superadmin</span></h2>
+            </div>
+            <p style="text-align:center; color:var(--text-muted); font-size:0.8rem; margin-bottom:1.5rem;">Console Pengembang &bull; Multi-Tenant Global Manager</p>
+            <form id="saLoginForm">
+                <div class="form-group">
+                    <label>Username Developer</label>
+                    <input type="text" id="saUsername" value="admin@archer.nvr" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label>Password Developer</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="saPassword" value="archer" required autocomplete="current-password">
+                        <button type="button" class="btn-peek-pwd" data-target="saPassword" title="Lihat Password"><span class="peek-icon">👁️</span></button>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary w-full mt-3" style="background:#8b5cf6;">Masuk Console Superadmin</button>
+            </form>
+            <div id="saLoginError" style="color:var(--accent); text-align:center; margin-top:1rem; font-size:0.85rem;"></div>
+            <div style="text-align:center; margin-top:1.2rem; border-top:1px solid var(--border); padding-top:1rem;">
+                <a href="/" style="color:var(--text-muted); font-size:0.82rem; text-decoration:none;">&larr; Kembali ke Dashboard Utama NVR</a>
+            </div>
+        </div>
+    </div>
+
+    <div id="saDashboard" style="display:none; max-width:1100px; margin:0 auto; padding:2rem 1.5rem 4rem 1.5rem;">
+        <!-- Top Header -->
+        <header style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:1.2rem; margin-bottom:2rem;">
+            <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span style="font-size:2rem;">⚡</span>
+                <div>
+                    <h1 style="font-size:1.4rem; margin:0;">Archer NVR <span class="badge" style="background:#8b5cf6; font-size:0.75rem; padding:2px 8px; border-radius:4px; vertical-align:middle;">V8.7 Global Console</span></h1>
+                    <span style="font-size:0.8rem; color:var(--text-muted);">Tingkat Pengembang &bull; Arsitektur Multi-Tenant Shinobi CCTV</span>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:1rem;">
+                <a href="/" class="btn btn-secondary" style="font-size:0.85rem; text-decoration:none; display:inline-flex; align-items:center; gap:0.4rem;">
+                    🖥️ Buka NVR Viewer
+                </a>
+                <button id="saBtnLogout" class="btn btn-secondary" style="color:var(--accent); font-size:0.85rem;">
+                    Keluar (Logout)
+                </button>
+            </div>
+        </header>
+
+        <!-- Grid Cards Pengaturan Global -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:1.5rem; margin-bottom:2rem;">
+            <!-- Kartu Lisensi -->
+            <div class="camera-form-section">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <h3 style="margin:0; font-size:1.1rem; display:flex; align-items:center; gap:0.5rem;">
+                        <span>📜</span> Pengaturan Lisensi Global
+                    </h3>
+                    <span class="badge" style="background:#10b981; font-size:0.75rem; padding:2px 6px; border-radius:4px;">ACTIVE</span>
+                </div>
+                <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:1rem;">Kelola lisensi aktivasi sistem untuk perangkat Armbian STB ini.</p>
+                <form id="saLicenseForm">
+                    <div class="form-group">
+                        <label>Kunci Lisensi (License Key)</label>
+                        <input type="text" id="saLicenseKey" placeholder="ARCHER-PRO-COMMUNITY-2026" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="background:#8b5cf6; width:100%;">Simpan Lisensi</button>
+                </form>
+            </div>
+
+            <!-- Kartu P2P Relay & WebRTC Server -->
+            <div class="camera-form-section">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                    <h3 style="margin:0; font-size:1.1rem; display:flex; align-items:center; gap:0.5rem;">
+                        <span>🌐</span> Server Relay P2P & WebRTC
+                    </h3>
+                    <span class="badge" style="background:#3b82f6; font-size:0.75rem; padding:2px 6px; border-radius:4px;">ONLINE</span>
+                </div>
+                <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:1rem;">Konfigurasi server relay P2P global untuk akses remote tanpa port forwarding.</p>
+                <form id="saP2pForm">
+                    <div class="form-group">
+                        <label>P2P Relay Host / Domain</label>
+                        <input type="text" id="saP2pHost" placeholder="p2p.archer-nvr.net:443" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="background:#8b5cf6; width:100%;">Perbarui P2P Relay</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Manajemen Akun Administrator -->
+        <div class="camera-form-section" style="margin-bottom:2rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+                <div>
+                    <h2 style="font-size:1.25rem; margin:0; display:flex; align-items:center; gap:0.5rem;">
+                        <span>👥</span> Manajemen Akun Administrator (Pemilik NVR)
+                    </h2>
+                    <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.25rem;">
+                        Administrator memiliki hak penuh mengelola kamera RTSP, penyimpanan USB/HDD, dan membuat akun User (Klien).
+                    </p>
+                </div>
+                <button type="button" id="btnToggleAddAdmin" class="btn btn-primary" style="background:#10b981; font-size:0.85rem;">
+                    + Tambah Administrator Baru
+                </button>
+            </div>
+
+            <!-- Form Tambah Administrator (Collapsible) -->
+            <div id="formAddAdminBox" style="display:none; background:var(--surface-dark); border:1px solid var(--border-highlight); border-radius:8px; padding:1.5rem; margin-bottom:1.5rem;">
+                <h3 style="font-size:1rem; margin-bottom:1rem; color:#60a5fa;">Buat Akun Administrator Baru</h3>
+                <form id="saAddAdminForm">
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label>Nama Administrator / Instansi</label>
+                            <input type="text" id="newAdminName" placeholder="Contoh: Toko Berkah / Rumah Utama" required>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Username Login</label>
+                            <input type="text" id="newAdminUsername" placeholder="Contoh: admin_toko" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label>Password</label>
+                            <input type="password" id="newAdminPassword" placeholder="Minimal 4 karakter" required>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:0.75rem; justify-content:flex-end; margin-top:0.5rem;">
+                        <button type="button" id="btnCancelAddAdmin" class="btn btn-secondary">Batal</button>
+                        <button type="submit" class="btn btn-primary" style="background:#10b981;">Daftarkan Administrator</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Tabel Daftar Administrator -->
+            <div style="overflow-x:auto;">
+                <table style="width:100%; border-collapse:collapse; font-size:0.9rem; text-align:left;">
+                    <thead>
+                        <tr style="border-bottom:1px solid var(--border); color:var(--text-muted); font-size:0.8rem; text-transform:uppercase;">
+                            <th style="padding:0.75rem 1rem;">ID</th>
+                            <th style="padding:0.75rem 1rem;">Nama</th>
+                            <th style="padding:0.75rem 1rem;">Username</th>
+                            <th style="padding:0.75rem 1rem;">Kamera</th>
+                            <th style="padding:0.75rem 1rem;">User Klien</th>
+                            <th style="padding:0.75rem 1rem;">Tanggal Registrasi</th>
+                            <th style="padding:0.75rem 1rem; text-align:right;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="saAdminTableBody">
+                        <tr>
+                            <td colspan="7" style="text-align:center; padding:2rem; color:var(--text-muted);">Memuat daftar administrator...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="superadmin.js"></script>
+</body>
+</html>

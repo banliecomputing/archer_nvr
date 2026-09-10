@@ -19,6 +19,22 @@ const app = express();
 const port = 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_nvr_key_2026';
 
+// Paths
+const publicDir = path.join(__dirname, 'public');
+const streamBaseDir = path.join(publicDir, 'streams');
+const dataDir = path.join(__dirname, 'data');
+const nvrDbFile = path.join(dataDir, 'nvr_db.json');
+const baseStoragePath = process.env.STORAGE_PATH || path.join(__dirname, 'public', 'recordings');
+
+// MediaMTX Paths (~/mediamtx.yml)
+const homeDir = os.homedir() || process.env.HOME || '/root';
+const mediamtxConfigFile = process.env.MEDIAMTX_CONFIG_PATH || path.join(homeDir, 'mediamtx.yml');
+
+// Ensure directories
+[streamBaseDir, dataDir, baseStoragePath].forEach(dir => {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+});
+
 app.use(express.json());
 app.use(cookieParser());
 // Serve static assets from the public directory
@@ -41,27 +57,39 @@ app.use('/stream', (req, res, next) => {
     ws: true
 }));
 
-// Paths
-const publicDir = path.join(__dirname, 'public');
-const streamBaseDir = path.join(publicDir, 'streams');
-const dataDir = path.join(__dirname, 'data');
-const nvrDbFile = path.join(dataDir, 'nvr_db.json');
-const baseStoragePath = process.env.STORAGE_PATH || path.join(__dirname, 'public', 'recordings');
-
-// MediaMTX Paths (~/mediamtx.yml)
-const homeDir = os.homedir() || process.env.HOME || '/root';
-const mediamtxConfigFile = process.env.MEDIAMTX_CONFIG_PATH || path.join(homeDir, 'mediamtx.yml');
-
-// Ensure directories
-[streamBaseDir, dataDir, baseStoragePath].forEach(dir => {
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-});
-
 function getDefaultDb() {
     return {
-        super_settings: { license: "", p2p_relay: "", telegramBotToken: "", telegramChatId: "", recordingQuality: 'main', globalStorageMode: 'disabled', mediamtxPort: 8889, mediamtxHost: '', showTopMonitor: false, netInterface: 'auto' },
-        administrators: [],
-        users: [],
+        super_settings: { 
+            license: "ARCHER-PRO-COMMUNITY-2026", 
+            p2p_relay: "p2p.archer-nvr.net:443", 
+            telegramBotToken: "", 
+            telegramChatId: "", 
+            recordingQuality: 'main', 
+            globalStorageMode: 'disabled', 
+            mediamtxPort: 8889, 
+            mediamtxHost: '', 
+            showTopMonitor: false, 
+            netInterface: 'auto' 
+        },
+        administrators: [
+            {
+                id: 'admin_root',
+                username: 'admin',
+                password: bcrypt.hashSync('admin123', 8),
+                name: 'Administrator Utama',
+                createdAt: new Date().toISOString()
+            }
+        ],
+        users: [
+            {
+                id: 'user_default',
+                username: 'user',
+                password: bcrypt.hashSync('user123', 8),
+                admin_id: 'admin_root',
+                name: 'Pengguna Mobile Client',
+                createdAt: new Date().toISOString()
+            }
+        ],
         cameras: [],
         recordings: [],
         system_logs: [],
@@ -75,18 +103,22 @@ function getNvrDb() {
             const data = JSON.parse(fs.readFileSync(nvrDbFile, 'utf8'));
             const def = getDefaultDb();
             if (!data.super_settings) data.super_settings = def.super_settings;
-            if (!data.administrators) data.administrators = [];
-            if (!data.users) data.users = [];
+            if (!data.administrators || data.administrators.length === 0) data.administrators = def.administrators;
+            if (!data.users) data.users = def.users;
             if (!data.cameras) data.cameras = [];
             if (!data.recordings) data.recordings = [];
             if (!data.system_logs) data.system_logs = [];
             if (data.recording_path === undefined) data.recording_path = '';
             return data;
         }
-        return getDefaultDb();
+        const initial = getDefaultDb();
+        saveNvrDb(initial);
+        return initial;
     }
     catch (e) {
-        return getDefaultDb();
+        const initial = getDefaultDb();
+        saveNvrDb(initial);
+        return initial;
     }
 }
 
@@ -273,6 +305,130 @@ app.post('/api/auth/change-password', verifyToken, (req, res) => {
     account.password = bcrypt.hashSync(newPassword, 8);
     saveNvrDb(dbData);
     
+    res.json({ success: true });
+});
+
+// --- Multi-Tenant & RBAC Page Routes ---
+app.get('/superadmin', (req, res) => {
+    res.sendFile(path.join(publicDir, 'superadmin.html'));
+});
+
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(publicDir, 'index.html'));
+});
+
+// --- Superadmin APIs (Lisensi, Relay P2P, Buat Akun Administrator) ---
+app.get('/api/superadmin/settings', verifyToken, requireSuperadmin, (req, res) => {
+    const dbData = getNvrDb();
+    res.json(dbData.super_settings || getDefaultDb().super_settings);
+});
+
+app.post('/api/superadmin/settings', verifyToken, requireSuperadmin, (req, res) => {
+    const dbData = getNvrDb();
+    dbData.super_settings = { ...dbData.super_settings, ...req.body };
+    saveNvrDb(dbData);
+    sysLog('INFO', '[Superadmin] Pengaturan Lisensi & P2P Relay diperbarui.');
+    res.json({ success: true, settings: dbData.super_settings });
+});
+
+app.get('/api/superadmin/admins', verifyToken, requireSuperadmin, (req, res) => {
+    const dbData = getNvrDb();
+    const list = (dbData.administrators || []).map(a => ({
+        id: a.id,
+        username: a.username,
+        name: a.name || a.username,
+        createdAt: a.createdAt,
+        cameraCount: (dbData.cameras || []).filter(c => c.admin_id === a.id).length,
+        userCount: (dbData.users || []).filter(u => u.admin_id === a.id).length
+    }));
+    res.json({ administrators: list });
+});
+
+app.post('/api/superadmin/admins', verifyToken, requireSuperadmin, (req, res) => {
+    const { username, password, name } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Username dan password wajib diisi' });
+    const dbData = getNvrDb();
+    if (!dbData.administrators) dbData.administrators = [];
+    if (dbData.administrators.some(a => a.username.toLowerCase() === username.trim().toLowerCase())) {
+        return res.status(400).json({ error: 'Username administrator sudah digunakan' });
+    }
+    const newAdmin = {
+        id: `admin_${Date.now()}`,
+        username: username.trim(),
+        password: bcrypt.hashSync(password, 8),
+        name: (name || username).trim(),
+        createdAt: new Date().toISOString()
+    };
+    dbData.administrators.push(newAdmin);
+    saveNvrDb(dbData);
+    sysLog('INFO', `[Superadmin] Akun Administrator baru dibuat: ${newAdmin.username}`);
+    res.json({ success: true, administrator: { id: newAdmin.id, username: newAdmin.username, name: newAdmin.name } });
+});
+
+app.delete('/api/superadmin/admins/:id', verifyToken, requireSuperadmin, (req, res) => {
+    const { id } = req.params;
+    const dbData = getNvrDb();
+    const index = (dbData.administrators || []).findIndex(a => a.id === id);
+    if (index === -1) return res.status(404).json({ error: 'Administrator tidak ditemukan' });
+    const removed = dbData.administrators.splice(index, 1)[0];
+    saveNvrDb(dbData);
+    sysLog('INFO', `[Superadmin] Akun Administrator dihapus: ${removed.username}`);
+    res.json({ success: true });
+});
+
+// --- Administrator User Management APIs (Buat Akun User / Klien Mobile) ---
+app.get('/api/admin/users', verifyToken, requireAdministrator, (req, res) => {
+    const dbData = getNvrDb();
+    const currentAdminId = req.adminId || req.userId;
+    let list = dbData.users || [];
+    if (req.userRole !== 'superadmin') {
+        list = list.filter(u => !u.admin_id || u.admin_id === currentAdminId);
+    }
+    const safeUsers = list.map(u => ({
+        id: u.id,
+        username: u.username,
+        name: u.name || u.username,
+        admin_id: u.admin_id,
+        createdAt: u.createdAt
+    }));
+    res.json({ users: safeUsers });
+});
+
+app.post('/api/admin/users', verifyToken, requireAdministrator, (req, res) => {
+    const { username, password, name } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Username dan password wajib diisi' });
+    const dbData = getNvrDb();
+    if (!dbData.users) dbData.users = [];
+    if (dbData.users.some(u => u.username.toLowerCase() === username.trim().toLowerCase())) {
+        return res.status(400).json({ error: 'Username klien sudah digunakan' });
+    }
+    const currentAdminId = req.adminId || req.userId;
+    const newUser = {
+        id: `user_${Date.now()}`,
+        username: username.trim(),
+        password: bcrypt.hashSync(password, 8),
+        name: (name || username).trim(),
+        admin_id: currentAdminId,
+        createdAt: new Date().toISOString()
+    };
+    dbData.users.push(newUser);
+    saveNvrDb(dbData);
+    sysLog('INFO', `[Administrator] Akun User (Klien) baru dibuat: ${newUser.username}`);
+    res.json({ success: true, user: { id: newUser.id, username: newUser.username, name: newUser.name } });
+});
+
+app.delete('/api/admin/users/:id', verifyToken, requireAdministrator, (req, res) => {
+    const { id } = req.params;
+    const dbData = getNvrDb();
+    const currentAdminId = req.adminId || req.userId;
+    const index = (dbData.users || []).findIndex(u => u.id === id);
+    if (index === -1) return res.status(404).json({ error: 'User tidak ditemukan' });
+    if (req.userRole !== 'superadmin' && dbData.users[index].admin_id && dbData.users[index].admin_id !== currentAdminId) {
+        return res.status(403).json({ error: 'Tidak berhak menghapus user milik admin lain' });
+    }
+    const removed = dbData.users.splice(index, 1)[0];
+    saveNvrDb(dbData);
+    sysLog('INFO', `[Administrator] Akun User (Klien) dihapus: ${removed.username}`);
     res.json({ success: true });
 });
 
