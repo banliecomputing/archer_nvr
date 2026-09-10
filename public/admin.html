@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Archer_NVR - V8.6 Professional Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <meta name="theme-color" content="#0f172a">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+<body>
+    <div id="authOverlay" class="auth-overlay">
+        <div class="auth-card" id="authCard">
+            <div class="brand" style="justify-content:center; border:none; padding-bottom:0.5rem;">
+                <span class="icon">🛡️</span>
+                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V8.6</span></h2>
+            </div>
+            <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">Professional NVR System &bull; Auto-Detect Storage &bull; Live Monitor</p>
+            <div class="auth-tabs" id="authTabs" style="display:none;">
+                <button type="button" class="auth-tab-btn" id="tabLoginBtn">Login</button>
+                <button type="button" class="auth-tab-btn" id="tabRegisterBtn">Daftar Akun Baru</button>
+            </div>
+            <h3 id="authTitle" style="text-align:center; margin-bottom:1.5rem; display:none;">Memuat...</h3>
+            <form id="authForm" style="display:none;">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="authUsername" placeholder="Masukkan username" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="authPassword" placeholder="Masukkan password" required autocomplete="current-password">
+                    </div>
+                </div>
+                <div class="form-group" id="authConfirmGroup" style="display:none;">
+                    <label>Konfirmasi Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="authPasswordConfirm" placeholder="Ketik ulang password" autocomplete="new-password">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary w-full" id="authSubmitBtn">Login</button>
+            </form>
+            <div id="authError" style="color:var(--accent); text-align:center; margin-top:1rem; font-size:0.85rem;"></div>
+        </div>
+    </div>
+
+    <div class="app-layout" id="mainApp" style="display:none;">
+        <div id="sidebarOverlay" class="sidebar-overlay"></div>
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-profile">
+                <div class="brand">
+                    <span class="icon">🛡️</span>
+                    <h2>Archer_NVR <span class="badge">V8.6</span></h2>
+                </div>
+                <div class="user-info">
+                    <div class="avatar">👤</div>
+                    <div class="details">
+                        <strong id="lblUsername">Memuat...</strong>
+                        <span id="lblActiveCams">0 Kamera Aktif</span>
+                    </div>
+                    <button id="btnLogout" title="Logout">🚪</button>
+                </div>
+            </div>
+            <div class="sidebar-widget">
+                <div class="widget-grid">
+                    <div class="w-item"><span>CPU</span><strong id="wCpu">--%</strong></div>
+                    <div class="w-item"><span>RAM</span><strong id="wRam">--%</strong></div>
+                    <div class="w-item"><span>Temp</span><strong id="wTemp">--°C</strong></div>
+                    <div class="w-item"><span>Disk</span><strong id="wStorage">--%</strong></div>
+                </div>
+                <div class="widget-net">
+                    <div class="net-title">Network (<span id="wNetIf">eth0</span>)</div>
+                    <div class="net-speeds">
+                        <span class="down">↓ <span id="wNetDown">0 KB/s</span></span>
+                        <span class="up">↑ <span id="wNetUp">0 KB/s</span></span>
+                    </div>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-target="view-home"><span class="icon">🏠</span> Home</a>
+                <div class="nav-group">
+                    <div class="nav-header"><span class="icon">⊞</span> View <span class="arrow">▼</span></div>
+                    <div class="nav-submenu">
+                        <a href="#" class="nav-subitem layout-btn" data-grid="1" data-target="view-live">1x1 Single</a>
+                        <a href="#" class="nav-subitem layout-btn active" data-grid="4" data-target="view-live">2x2 Quad</a>
+                        <a href="#" class="nav-subitem layout-btn" data-grid="9" data-target="view-live">3x3 Grid</a>
+                        <a href="#" class="nav-subitem layout-btn" data-grid="16" data-target="view-live">4x4 Grid</a>
+                    </div>
+                </div>
+                <div class="nav-group">
+                    <div class="nav-header"><span class="icon">👁️</span> Monitor <span class="arrow">▼</span></div>
+                    <div class="nav-submenu" id="menuCameraList">
+                        <span style="padding: 0.5rem 1rem; color:var(--text-muted); font-size:0.8rem;">Memuat kamera...</span>
+                    </div>
+                </div>
+                <a href="#" class="nav-item" data-target="view-playback"><span class="icon">📼</span> Playback</a>
+                <a href="#" class="nav-item" data-target="view-onvif"><span class="icon">🔍</span> Onvif Scanner</a>
+                <div class="nav-group">
+                    <div class="nav-header"><span class="icon">⚙️</span> Setting <span class="arrow">▼</span></div>
+                    <div class="nav-submenu">
+                        <a href="#" class="nav-subitem" data-target="view-setting-cameras">Kamera</a>
+                        <a href="#" class="nav-subitem" data-target="view-setting-record">Record</a>
+                        <a href="#" class="nav-subitem" data-target="view-setting-account">Account</a>
+                        <a href="#" class="nav-subitem" data-target="view-setting-system">System/Network</a>
+                    </div>
+                </div>
+                <a href="#" class="nav-item" data-target="view-logs"><span class="icon">📋</span> System Logs</a>
+                <a href="#" class="nav-item" data-target="view-help"><span class="icon">❓</span> Help</a>
+            </nav>
+        </aside>
+        <main class="main-content">
+            <header class="mobile-header">
+                <button id="btnMobileMenu" class="btn-icon">☰</button>
+                <h2>Archer_NVR <span class="badge">V8.6</span></h2>
+            </header>
+            <div id="view-home" class="view-pane active">
+                <div class="content-wrapper" style="padding: 2rem;">
+                    <h2>Dashboard Home</h2>
+                    <p style="color:var(--text-muted); margin-bottom:1rem;">Selamat datang di Sistem Pemantauan Archer NVR.</p>
+                    <div style="display:flex; gap:1rem; flex-wrap:wrap;">
+                        <button class="btn btn-primary" onclick="document.querySelector('.nav-subitem[data-grid=\"4\"]').click()">Buka Live View</button>
+                    </div>
+                </div>
+            </div>
+            <div id="view-live" class="view-pane">
+                <div class="grid-wrapper">
+                    <div id="videoGrid" class="video-grid grid-4"></div>
+                </div>
+            </div>
+            <div id="view-playback" class="view-pane">
+                <div class="playback-wrapper">
+                    <div style="display:flex; gap:1rem; padding:1rem; background:var(--surface); border-bottom:1px solid var(--border);">
+                        <select id="selRecCam" class="form-control"><option>Memuat...</option></select>
+                        <select id="selRecDate" class="form-control"><option>Pilih Kamera Dulu</option></select>
+                    </div>
+                    <div style="display:flex; flex:1; overflow:hidden;">
+                        <div style="flex:1; padding:1rem; display:flex; flex-direction:column;">
+                            <video id="playbackPlayer" controls playsinline style="width:100%; max-height:70vh; background:#000;"></video>
+                        </div>
+                        <div style="width:300px; background:var(--surface-dark); border-left:1px solid var(--border); overflow-y:auto;">
+                            <h3 style="padding:1rem; border-bottom:1px solid var(--border);">Daftar Klip</h3>
+                            <ul id="playbackList" class="playback-list"></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="view-onvif" class="view-pane">
+                <div class="content-wrapper" style="padding: 2rem;">
+                    <h2>Onvif Scanner</h2>
+                    <p style="color:var(--text-muted);">Memindai kamera IP lokal secara otomatis.</p>
+                    <div style="padding: 2rem; background:var(--surface-dark); border-radius:8px; text-align:center; margin-top:1rem;">
+                        <p>Fitur Onvif Scanner sedang dalam pengembangan.</p>
+                    </div>
+                </div>
+            </div>
+            <div id="view-setting-cameras" class="view-pane">
+                <div class="content-wrapper" style="padding: 2rem; max-width:900px; margin:0 auto;">
+                    <h2>Manajemen Kamera</h2>
+                    <div class="camera-manager" style="margin-top:1rem;">
+                        <div id="modalCameraList" class="modal-camera-list"></div>
+                    </div>
+                    <div class="camera-form-section" style="margin-top:2rem;">
+                        <h3 id="formTitle">Tambah / Edit Kamera</h3>
+                        <button type="button" id="btnCancelEdit" class="btn-sm btn-secondary" style="display:none; margin-bottom:1rem;">Batalkan Edit</button>
+                        <div class="cam-inner-tabs">
+                            <button type="button" class="ctab-btn active" data-target="ctab-general">General</button>
+                            <button type="button" class="ctab-btn" data-target="ctab-streams">Streams</button>
+                            <button type="button" class="ctab-btn" data-target="ctab-storage">Storage</button>
+                        </div>
+                        <form id="cameraForm">
+                            <input type="hidden" id="camId">
+                            <div id="ctab-general" class="ctab-pane active">
+                                <div class="form-group row-check"><input type="checkbox" id="camEnabled" checked><label for="camEnabled">Aktifkan Kamera</label></div>
+                                <div class="form-group"><label>Nama Kamera</label><input type="text" id="camName" required></div>
+                            </div>
+                            <div id="ctab-streams" class="ctab-pane">
+                                <div class="form-group"><label>Main Stream URL (RTSP)</label><input type="text" id="camMainUrl" required></div>
+                                <div class="form-group"><label>Sub Stream URL (RTSP - opsional)</label><input type="text" id="camSubUrl"></div>
+                                <div class="form-group"><label>Mode Transcode</label><select id="camTranscode" class="form-control"><option value="auto">Auto-Detect (Rekomendasi)</option><option value="copy">Direct Passthrough</option><option value="transcode">Paksa Transcode</option></select></div>
+                            </div>
+                            <div id="ctab-storage" class="ctab-pane">
+                                <div class="form-row">
+                                    <div class="form-group flex-1"><label>Mode Rekam</label><select id="camRecordMode" class="form-control"><option value="disabled">Disabled</option><option value="continuous">Continuous</option></select></div>
+                                    <div class="form-group flex-1"><label>Durasi Segment (Detik)</label><input type="number" id="camSegmentSec" value="900" min="60"></div>
+                                </div>
+                                <div class="form-group"><label>Custom Storage Path</label><input type="text" id="camStoragePath"></div>
+                                <div class="form-row">
+                                    <div class="form-group flex-1"><label>Maks Hari</label><input type="number" id="camMaxDays" value="7" min="1"></div>
+                                    <div class="form-group flex-1"><label>Maks GB</label><input type="number" id="camMaxGB" value="10" min="1" step="0.5"></div>
+                                </div>
+                            </div>
+                            <div class="form-actions mt-3"><button type="submit" class="btn btn-primary w-full">Simpan Kamera</button></div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div id="view-setting-record" class="view-pane">
+                <div class="content-wrapper" style="padding: 2rem; max-width:800px; margin:0 auto;">
+                    <h2>Pengaturan Storage Global</h2>
+                    <form id="globalStorageForm" class="camera-form-section" style="margin-top:1rem;">
+                        <div class="form-group">
+                            <label>Pilih Lokasi Drive Penyimpanan</label>
+                            <div style="display:flex; gap:0.5rem;">
+                                <select id="sysStorageDevice" class="form-control" style="flex:1;"><option value="">Memindai...</option></select>
+                                <button type="button" id="btnRefreshStorage" class="btn btn-secondary">🔄 Pindai</button>
+                            </div>
+                        </div>
+                        <div id="storageDevicePreview" class="storage-info-box" style="margin-top:0.6rem; margin-bottom:0.8rem; display:none;">
+                            <div style="display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:0.35rem;">
+                                <span id="stPreviewName" style="font-weight:600; color:#f8fafc;">Drive: -</span>
+                                <span id="stPreviewMount" style="font-family:monospace; color:#60a5fa;">-</span>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:var(--text-muted);">
+                                <span id="stPreviewCapacity">Kapasitas: -</span>
+                                <span id="stPreviewFree" style="color:#4ade80; font-weight:600;">Sisa: -</span>
+                            </div>
+                            <div style="margin-top:0.5rem; height:6px; background:#1e293b; border-radius:3px; overflow:hidden;">
+                                <div id="stPreviewFill" style="height:100%; width:0%; background:#3b82f6; transition:width 0.3s;"></div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Jalur Penyimpanan Aktif (RECORDING_PATH)</label>
+                            <input type="text" id="sysCustomStoragePath">
+                        </div>
+                        <div class="form-group">
+                            <label>Kualitas Rekaman Video Global</label>
+                            <select id="sysRecordingQuality" class="form-control"><option value="main">Main Stream HD</option><option value="sub">Sub Stream SD</option></select>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-full mt-3">Simpan Preferensi Storage</button>
+                    </form>
+                </div>
+            </div>
+            <div id="view-setting-account" class="view-pane">
+                <div class="content-wrapper" style="padding: 2rem; max-width:800px; margin:0 auto;">
+                    <h2>Keamanan Akun</h2>
+                    <form id="changePasswordForm" class="camera-form-section" style="margin-top:1rem;">
+                        <div class="form-group">
+                            <label>Password Lama</label>
+                            <input type="password" id="oldPassword" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Password Baru</label>
+                            <input type="password" id="newPassword" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary mt-3">Ganti Password</button>
+                    </form>
+                </div>
+            </div>
+            <div id="view-setting-system" class="view-pane">
+                <div class="content-wrapper" style="padding: 2rem; max-width:800px; margin:0 auto;">
+                    <h2>System &amp; Network</h2>
+                    <form id="systemForm" class="camera-form-section" style="margin-top:1rem;">
+                        <div class="form-group">
+                            <label>Interface Jaringan Aktif</label>
+                            <select id="sysNetInterface" class="form-control"><option value="auto">Auto-Detect</option><option value="eth0">LAN (eth0)</option><option value="wlan0">WiFi (wlan0)</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>P2P Server Host / Relay URL</label>
+                            <input type="text" id="sysP2pServer" placeholder="p2p.domain.com:443">
+                        </div>
+                        <div class="form-group">
+                            <label>Telegram Bot Token</label>
+                            <input type="text" id="sysTgBot">
+                        </div>
+                        <div class="form-group">
+                            <label>Telegram Chat ID</label>
+                            <input type="text" id="sysTgChat">
+                        </div>
+                        <button type="submit" class="btn btn-primary mt-3">Simpan Pengaturan</button>
+                    </form>
+                </div>
+            </div>
+            <div id="view-logs" class="view-pane">
+                <div class="content-wrapper" style="padding: 2rem; height:100%; display:flex; flex-direction:column;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                        <h2 style="margin:0;">System Logs</h2>
+                        <button id="btnRefreshLogs" class="btn btn-secondary">Refresh</button>
+                    </div>
+                    <div id="logsContainer" style="flex:1; background:#000; border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-y:auto; font-family:monospace; font-size:0.85rem; color:#a3be8c;">
+                        Memuat logs...
+                    </div>
+                </div>
+            </div>
+            <div id="view-help" class="view-pane">
+                <div class="content-wrapper" style="padding: 2rem;">
+                    <h2>Bantuan &amp; Informasi</h2>
+                    <div class="camera-form-section" style="margin-top:1rem;">
+                        <p>Dokumentasi dan panduan penggunaan Archer NVR V8.6.</p>
+                        <ul style="margin-left: 1.5rem; margin-top:1rem; color:var(--text-muted);">
+                            <li><strong>Monitor:</strong> Untuk melihat live stream dari kamera spesifik.</li>
+                            <li><strong>View:</strong> Untuk mengatur grid multi-kamera (1x1 hingga 4x4).</li>
+                            <li><strong>Playback:</strong> Menonton rekaman yang tersimpan di disk.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

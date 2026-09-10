@@ -21,6 +21,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_nvr_key_2026';
 
 app.use(express.json());
 app.use(cookieParser());
+// Serve static assets from the public directory
+app.use(express.static(publicDir));
 
 // Proxy HLS streams from MediaMTX (Internal Port 8880) to allow remote access
 app.use('/stream', (req, res, next) => {
@@ -42,8 +44,6 @@ app.use('/stream', (req, res, next) => {
 // Paths
 const publicDir = path.join(__dirname, 'public');
 const streamBaseDir = path.join(publicDir, 'streams');
-const dbFile = path.join(__dirname, 'cameras.json');
-const settingsFile = path.join(__dirname, 'settings.json');
 const dataDir = path.join(__dirname, 'data');
 const nvrDbFile = path.join(dataDir, 'nvr_db.json');
 const baseStoragePath = process.env.STORAGE_PATH || path.join(__dirname, 'public', 'recordings');
@@ -57,40 +57,42 @@ const mediamtxConfigFile = process.env.MEDIAMTX_CONFIG_PATH || path.join(homeDir
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
-if (!fs.existsSync(dbFile)) fs.writeFileSync(dbFile, JSON.stringify([]));
-if (!fs.existsSync(settingsFile)) fs.writeFileSync(settingsFile, JSON.stringify({ telegramBotToken: "", telegramChatId: "" }));
+function getDefaultDb() {
+    return {
+        super_settings: { license: "", p2p_relay: "", telegramBotToken: "", telegramChatId: "", recordingQuality: 'main', globalStorageMode: 'disabled', mediamtxPort: 8889, mediamtxHost: '', showTopMonitor: false, netInterface: 'auto' },
+        administrators: [],
+        users: [],
+        cameras: [],
+        recordings: [],
+        system_logs: [],
+        recording_path: ''
+    };
+}
 
 function getNvrDb() {
     try {
         if (fs.existsSync(nvrDbFile)) {
             const data = JSON.parse(fs.readFileSync(nvrDbFile, 'utf8'));
+            const def = getDefaultDb();
+            if (!data.super_settings) data.super_settings = def.super_settings;
+            if (!data.administrators) data.administrators = [];
+            if (!data.users) data.users = [];
+            if (!data.cameras) data.cameras = [];
             if (!data.recordings) data.recordings = [];
             if (!data.system_logs) data.system_logs = [];
-            if (!data.users) data.users = [];
             if (data.recording_path === undefined) data.recording_path = '';
             return data;
         }
-        const legacyFile = path.join(dataDir, 'nvr.db.json');
-        if (fs.existsSync(legacyFile)) {
-            const data = JSON.parse(fs.readFileSync(legacyFile, 'utf8'));
-            if (!data.recordings) data.recordings = [];
-            if (!data.system_logs) data.system_logs = [];
-            if (!data.users) data.users = [];
-            if (data.recording_path === undefined) data.recording_path = '';
-            fs.writeFileSync(nvrDbFile, JSON.stringify(data, null, 2));
-            return data;
-        }
-        return { recordings: [], system_logs: [], users: [], recording_path: '' };
+        return getDefaultDb();
     }
     catch (e) {
-        return { recordings: [], system_logs: [], users: [], recording_path: '' };
+        return getDefaultDb();
     }
 }
 
 function saveNvrDb(data) {
     try {
         fs.writeFileSync(nvrDbFile, JSON.stringify(data, null, 2));
-        // Sinkronkan juga ke nvr.db.json untuk kompatibilitas
         fs.writeFileSync(path.join(dataDir, 'nvr.db.json'), JSON.stringify(data, null, 2));
     } catch(e) {}
 }
@@ -116,26 +118,19 @@ let cameraStatuses = {}; // camId -> { main: { status, error, lastUpdate }, sub:
 let settings = {};
 
 function getSettings() {
-    try { 
-        const s = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-        if (!s.recordingQuality) s.recordingQuality = 'main';
-        if (!s.globalStorageMode) s.globalStorageMode = 'disabled';
-        if (!s.mediamtxPort) s.mediamtxPort = 8889;
-        if (s.mediamtxHost === undefined) s.mediamtxHost = '';
-        if (s.showTopMonitor === undefined) s.showTopMonitor = false;
-        if (!s.netInterface) s.netInterface = 'auto';
-        return s;
-    }
-    catch (e) { 
-        return { globalStorageMode: 'disabled', globalStoragePath: '', recordingQuality: 'main', mediamtxPort: 8889, mediamtxHost: '', showTopMonitor: false, netInterface: 'auto' }; 
-    }
+    const dbData = getNvrDb();
+    return dbData.super_settings || getDefaultDb().super_settings;
 }
+
 function getCameras() {
-    try { return JSON.parse(fs.readFileSync(dbFile, 'utf8')); }
-    catch (e) { return []; }
+    const dbData = getNvrDb();
+    return dbData.cameras || [];
 }
+
 function saveCameras(data) {
-    fs.writeFileSync(dbFile, JSON.stringify(data, null, 2));
+    const dbData = getNvrDb();
+    dbData.cameras = data;
+    saveNvrDb(dbData);
     cameras = data;
 }
 
@@ -158,15 +153,10 @@ function getActualBaseStoragePath() {
 // Database Initialization
 function initDB() {
     if (!fs.existsSync(nvrDbFile)) {
-        saveNvrDb({ recordings: [], system_logs: [], users: [], recording_path: '' });
+        saveNvrDb(getDefaultDb());
     } else {
         const data = getNvrDb();
-        let changed = false;
-        if (!data.users) { data.users = []; changed = true; }
-        if (!data.recordings) { data.recordings = []; changed = true; }
-        if (!data.system_logs) { data.system_logs = []; changed = true; }
-        if (data.recording_path === undefined) { data.recording_path = ''; changed = true; }
-        if (changed) saveNvrDb(data);
+        saveNvrDb(data);
     }
     sysLog('INFO', 'JSON Local Database Initialized (data/nvr_db.json)');
 }
@@ -179,79 +169,77 @@ function verifyToken(req, res, next) {
     jwt.verify(token, JWT_SECRET, (err, decoded) => {
         if (err) return res.status(401).json({ error: 'Unauthorized' });
         req.userId = decoded.id;
-        req.userRole = decoded.role || 'developer'; // Fallback to developer for old tokens
+        req.userRole = decoded.role || 'user';
+        req.adminId = decoded.adminId || null;
         next();
     });
 }
 
-function requireAdmin(req, res, next) {
-    if (req.userRole !== 'developer' && req.userRole !== 'administrator') {
+function requireSuperadmin(req, res, next) {
+    if (req.userRole !== 'superadmin') {
+        return res.status(403).json({ error: 'Forbidden: Requires Superadmin privileges' });
+    }
+    next();
+}
+
+function requireAdministrator(req, res, next) {
+    if (req.userRole !== 'superadmin' && req.userRole !== 'administrator') {
         return res.status(403).json({ error: 'Forbidden: Requires Administrator privileges' });
     }
     next();
 }
 
-function requireDeveloper(req, res, next) {
-    if (req.userRole !== 'developer') {
-        return res.status(403).json({ error: 'Forbidden: Requires Developer privileges' });
-    }
-    next();
+function requireAdmin(req, res, next) {
+    requireAdministrator(req, res, next);
 }
 
 // Auth Endpoints
 app.get('/api/auth/status', (req, res) => {
-    const dbData = getNvrDb();
-    const hasUsers = dbData.users && dbData.users.length > 0;
-    
     let authenticated = false;
-    let username = 'User';
-    let role = 'user';
+    let username = '';
+    let role = '';
     const token = req.cookies.nvr_auth_token;
     if (token) {
         try {
             const decoded = jwt.verify(token, JWT_SECRET);
             authenticated = true;
-            username = decoded.username || 'Admin';
-            role = decoded.role || 'developer';
+            username = decoded.username || 'User';
+            role = decoded.role || 'user';
         } catch (e) {}
     }
     
-    res.json({ needSetup: !hasUsers, authenticated, username, role });
-});
-
-app.post('/api/auth/setup', (req, res) => {
-    const dbData = getNvrDb();
-    if (dbData.users && dbData.users.length > 0) {
-        return res.status(400).json({ error: 'Setup already complete' });
-    }
-    
-    const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
-    
-    const hashedPassword = bcrypt.hashSync(password, 8);
-    const user = { id: Date.now().toString(), username, password: hashedPassword, role: 'developer' };
-    
-    dbData.users = [user];
-    saveNvrDb(dbData);
-    
-    const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
-    res.cookie('nvr_auth_token', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
-    res.json({ success: true });
+    res.json({ authenticated, username, role });
 });
 
 app.post('/api/auth/login', (req, res) => {
     const { username, password } = req.body;
-    const dbData = getNvrDb();
-    const user = (dbData.users || []).find(u => u.username === username);
     
-    if (!user || !bcrypt.compareSync(password, user.password)) {
-        return res.status(401).json({ error: 'Invalid credentials' });
+    // 1. Check Superadmin
+    if (username === 'admin@archer.nvr' && password === 'archer') {
+        const token = jwt.sign({ id: 'superadmin', username: 'Superadmin', role: 'superadmin' }, JWT_SECRET, { expiresIn: '24h' });
+        res.cookie('nvr_auth_token', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
+        return res.json({ success: true, role: 'superadmin' });
+    }
+
+    const dbData = getNvrDb();
+    
+    // 2. Check Administrators
+    const adminUser = (dbData.administrators || []).find(u => u.username === username);
+    if (adminUser && bcrypt.compareSync(password, adminUser.password)) {
+        const token = jwt.sign({ id: adminUser.id, username: adminUser.username, role: 'administrator', adminId: adminUser.id }, JWT_SECRET, { expiresIn: '24h' });
+        res.cookie('nvr_auth_token', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
+        return res.json({ success: true, role: 'administrator' });
     }
     
-    const role = user.role || 'developer';
-    const token = jwt.sign({ id: user.id, username: user.username, role }, JWT_SECRET, { expiresIn: '24h' });
-    res.cookie('nvr_auth_token', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
-    res.json({ success: true });
+    // 3. Check Users
+    const standardUser = (dbData.users || []).find(u => u.username === username);
+    if (standardUser && bcrypt.compareSync(password, standardUser.password)) {
+        const token = jwt.sign({ id: standardUser.id, username: standardUser.username, role: 'user', adminId: standardUser.admin_id }, JWT_SECRET, { expiresIn: '24h' });
+        res.cookie('nvr_auth_token', token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
+        return res.json({ success: true, role: 'user' });
+    }
+    
+    return res.status(401).json({ error: 'Invalid credentials' });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -266,19 +254,23 @@ app.post('/api/auth/change-password', verifyToken, (req, res) => {
     }
     
     const dbData = getNvrDb();
-    const userIndex = (dbData.users || []).findIndex(u => u.id === req.userId);
+    let account = null;
     
-    if (userIndex === -1) {
-        return res.status(404).json({ error: 'User not found' });
+    if (req.userRole === 'superadmin') {
+        return res.status(400).json({ error: 'Superadmin password cannot be changed here.' });
+    } else if (req.userRole === 'administrator') {
+        account = dbData.administrators.find(u => u.id === req.userId);
+    } else {
+        account = dbData.users.find(u => u.id === req.userId);
     }
     
-    const user = dbData.users[userIndex];
-    if (!bcrypt.compareSync(oldPassword, user.password)) {
+    if (!account) return res.status(404).json({ error: 'User not found' });
+    
+    if (!bcrypt.compareSync(oldPassword, account.password)) {
         return res.status(401).json({ error: 'Password lama salah' });
     }
     
-    const hashedPassword = bcrypt.hashSync(newPassword, 8);
-    dbData.users[userIndex].password = hashedPassword;
+    account.password = bcrypt.hashSync(newPassword, 8);
     saveNvrDb(dbData);
     
     res.json({ success: true });
