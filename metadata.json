@@ -1,6 +1,6 @@
 {
   "name": "Archer_NVR",
-  "description": "Multi-tenant Armbian STB NVR CCTV system (Shinobi-inspired architecture) with 3-tier accounts (Superadmin, Administrator, User Mobile PWA), MediaMTX WebRTC/HLS streaming, and auto-detect USB/HDD storage.",
+  "description": "Multi-tenant Armbian STB NVR CCTV system V8.8 (Shinobi-inspired architecture) with 3-tier accounts (Superadmin, Administrator, User Mobile PWA), MediaMTX WebRTC/HLS streaming, and auto-detect USB/HDD storage.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

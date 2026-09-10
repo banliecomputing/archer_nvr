@@ -1,4 +1,4 @@
-// script.js - Archer NVR V8.7 Multi-Tenant Controller
+// script.js - Archer NVR V8.8 Multi-Tenant Controller
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- Global State ---
@@ -75,6 +75,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const mProfileName = document.getElementById('mProfileName');
     const mChangePasswordForm = document.getElementById('mChangePasswordForm');
 
+    // --- Universal Token & Auth Fetch Helper ---
+    function getAuthToken() {
+        return localStorage.getItem('nvr_auth_token') || '';
+    }
+
+    function authFetch(url, options = {}) {
+        const opts = { ...options };
+        opts.headers = opts.headers ? { ...opts.headers } : {};
+        const token = getAuthToken();
+        if (token) {
+            opts.headers['Authorization'] = `Bearer ${token}`;
+        }
+        opts.credentials = 'include';
+        return fetch(url, opts);
+    }
+
     // --- Password Peek Handler ---
     function initPasswordPeeks() {
         document.querySelectorAll('.btn-peek-pwd').forEach(btn => {
@@ -101,15 +117,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================================
     async function checkAuth() {
         try {
-            const res = await fetch('/api/auth/status');
+            const res = await authFetch('/api/auth/status');
             const data = await res.json();
 
             if (data.authenticated) {
                 currentUserRole = data.role;
                 currentUsername = data.username;
+                localStorage.setItem('nvr_role', data.role);
+                localStorage.setItem('nvr_username', data.username);
 
                 if (currentUserRole === 'superadmin') {
-                    // Superadmin dialihkan ke portal khusus superadmin
                     window.location.href = '/superadmin';
                     return;
                 }
@@ -130,11 +147,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     initMobileUserApp();
                 }
             } else {
+                localStorage.removeItem('nvr_auth_token');
                 authOverlay.style.display = 'flex';
                 adminApp.style.display = 'none';
                 userApp.style.display = 'none';
             }
         } catch (err) {
+            localStorage.removeItem('nvr_auth_token');
             authOverlay.style.display = 'flex';
             adminApp.style.display = 'none';
             userApp.style.display = 'none';
@@ -151,15 +170,41 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ username, password })
             });
             const data = await res.json();
 
             if (res.ok && data.success) {
+                if (data.token) {
+                    localStorage.setItem('nvr_auth_token', data.token);
+                    localStorage.setItem('nvr_role', data.role);
+                    localStorage.setItem('nvr_username', data.username || username);
+                }
+
                 if (data.role === 'superadmin') {
                     window.location.href = '/superadmin';
+                    return;
+                }
+
+                // Langsung buka dashboard sesuai role tanpa kendala cookie
+                currentUserRole = data.role;
+                currentUsername = data.username || username;
+
+                authOverlay.style.display = 'none';
+
+                if (currentUserRole === 'administrator') {
+                    userApp.style.display = 'none';
+                    adminApp.style.display = 'flex';
+                    if (lblAdminName) lblAdminName.textContent = currentUsername;
+                    initAdminDashboard();
                 } else {
-                    checkAuth();
+                    // Role: User
+                    adminApp.style.display = 'none';
+                    userApp.style.display = 'flex';
+                    if (lblUserMobileName) lblUserMobileName.textContent = currentUsername;
+                    if (mProfileName) mProfileName.textContent = currentUsername;
+                    initMobileUserApp();
                 }
             } else {
                 authError.textContent = data.error || 'Username atau password salah.';
@@ -171,9 +216,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function handleLogout() {
         try {
-            await fetch('/api/auth/logout', { method: 'POST' });
+            await authFetch('/api/auth/logout', { method: 'POST' });
         } catch (e) {}
-        window.location.reload();
+        localStorage.removeItem('nvr_auth_token');
+        localStorage.removeItem('nvr_role');
+        localStorage.removeItem('nvr_username');
+        currentUserRole = null;
+        currentUsername = '';
+        authOverlay.style.display = 'flex';
+        adminApp.style.display = 'none';
+        userApp.style.display = 'none';
     }
 
     if (btnLogoutAdmin) btnLogoutAdmin.addEventListener('click', handleLogout);
@@ -302,7 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function updateHardwareStats() {
         try {
-            const res = await fetch('/api/system/stats');
+            const res = await authFetch('/api/system/stats');
             if (!res.ok) return;
             const data = await res.json();
             if (!data) return;
@@ -355,9 +407,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Camera Fetch & Grid Rendering ---
     async function fetchCameras() {
         try {
-            const res = await fetch('/api/cameras');
+            const res = await authFetch('/api/cameras');
             if (res.status === 401) {
-                window.location.reload();
+                localStorage.removeItem("nvr_auth_token");
+                authOverlay.style.display = "flex";
+                adminApp.style.display = "none";
+                userApp.style.display = "none";
                 return;
             }
             const data = await res.json();
@@ -395,7 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cell.className = 'cam-cell';
             cell.id = `cell_${cam.id}`;
 
-            const hlsUrl = `/stream/${cam.mediaMtxPath}/index.m3u8`;
+            const hlsUrl = `/stream/${cam.mediaMtxPath}/index.m3u8?token=${encodeURIComponent(getAuthToken())}`;
             const videoId = `cam_video_${cam.id}`;
 
             cell.innerHTML = `
@@ -566,7 +621,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const url = id ? `/api/cameras/${id}` : '/api/cameras';
 
             try {
-                const res = await fetch(url, {
+                const res = await authFetch(url, {
                     method: method,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -588,7 +643,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.restartCameraStream = async function(id) {
         try {
-            const res = await fetch(`/api/cameras/${id}/restart`, { method: 'POST' });
+            const res = await authFetch(`/api/cameras/${id}/restart`, { method: 'POST' });
             if (res.ok) {
                 alert('Stream kamera di-restart.');
                 fetchCameras();
@@ -603,7 +658,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         try {
-            const res = await fetch(`/api/cameras/${id}`, { method: 'DELETE' });
+            const res = await authFetch(`/api/cameras/${id}`, { method: 'DELETE' });
             if (res.ok) {
                 alert('Kamera berhasil dihapus.');
                 fetchCameras();
@@ -621,7 +676,7 @@ document.addEventListener('DOMContentLoaded', () => {
         sysStorageDevice.innerHTML = '<option value="">Memindai drive penyimpanan...</option>';
 
         try {
-            const res = await fetch('/api/system/storage-devices');
+            const res = await authFetch('/api/system/storage-devices');
             if (!res.ok) throw new Error('Gagal mendeteksi storage');
             const data = await res.json();
             detectedStorageDevices = data.devices || [];
@@ -711,14 +766,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 if (storagePath) {
-                    await fetch('/api/system/storage-devices/select', {
+                    await authFetch('/api/system/storage-devices/select', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ storagePath })
                     });
                 }
 
-                await fetch('/api/settings', {
+                await authFetch('/api/settings', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -738,7 +793,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- System & Network Settings Form ---
     async function fetchSystemSettings() {
         try {
-            const res = await fetch('/api/settings');
+            const res = await authFetch('/api/settings');
             if (res.ok) {
                 const s = await res.json();
                 const sysNetInterface = document.getElementById('sysNetInterface');
@@ -768,7 +823,7 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             try {
-                const res = await fetch('/api/settings', {
+                const res = await authFetch('/api/settings', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -804,7 +859,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function loadUsersList() {
         if (!userTableBody) return;
         try {
-            const res = await fetch('/api/admin/users');
+            const res = await authFetch('/api/admin/users');
             if (!res.ok) throw new Error('Gagal mengambil daftar user');
             const data = await res.json();
             const users = data.users || [];
@@ -843,7 +898,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             try {
-                const res = await fetch('/api/admin/users', {
+                const res = await authFetch('/api/admin/users', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, username, password })
@@ -868,7 +923,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.deleteUser = async function(id, username) {
         if (!confirm(`Apakah Anda yakin ingin menghapus akun User '${username}'?`)) return;
         try {
-            const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+            const res = await authFetch(`/api/admin/users/${id}`, { method: 'DELETE' });
             if (res.ok) {
                 alert('Akun user dihapus.');
                 loadUsersList();
@@ -888,7 +943,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const newPassword = document.getElementById('newPassword').value;
 
             try {
-                const res = await fetch('/api/auth/change-password', {
+                const res = await authFetch('/api/auth/change-password', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ oldPassword, newPassword })
@@ -936,7 +991,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (playbackList) playbackList.innerHTML = '<li style="padding:1rem; text-align:center; color:var(--text-muted);">Mencari klip rekaman...</li>';
 
             try {
-                const res = await fetch(`/api/recordings?camId=${camId}&date=${date}`);
+                const res = await authFetch(`/api/recordings?camId=${camId}&date=${date}`);
                 const data = await res.json();
                 const clips = data.recordings || [];
 
@@ -981,7 +1036,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!logsContainer) return;
         logsContainer.textContent = 'Memuat logs...';
         try {
-            const res = await fetch('/api/system/logs');
+            const res = await authFetch('/api/system/logs');
             const data = await res.json();
             const logs = data.logs || [];
             if (logs.length === 0) {
@@ -1044,7 +1099,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 mPlaybackList.innerHTML = '<li style="padding:1rem; text-align:center; color:var(--text-muted);">Mencari rekaman...</li>';
 
                 try {
-                    const res = await fetch(`/api/recordings?camId=${camId}&date=${date}`);
+                    const res = await authFetch(`/api/recordings?camId=${camId}&date=${date}`);
                     const data = await res.json();
                     const clips = data.recordings || [];
 
@@ -1088,7 +1143,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const newPassword = document.getElementById('mNewPassword').value;
 
                 try {
-                    const res = await fetch('/api/auth/change-password', {
+                    const res = await authFetch('/api/auth/change-password', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ oldPassword, newPassword })
@@ -1126,7 +1181,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchCamerasForMobile() {
         try {
-            const res = await fetch('/api/cameras');
+            const res = await authFetch('/api/cameras');
             if (res.status === 401) {
                 window.location.reload();
                 return;
@@ -1160,7 +1215,7 @@ document.addEventListener('DOMContentLoaded', () => {
         displayCams.forEach(cam => {
             const cell = document.createElement('div');
             cell.className = 'cam-cell';
-            const hlsUrl = `/stream/${cam.mediaMtxPath}/index.m3u8`;
+            const hlsUrl = `/stream/${cam.mediaMtxPath}/index.m3u8?token=${encodeURIComponent(getAuthToken())}`;
             const videoId = `m_vid_${cam.id}`;
 
             cell.innerHTML = `

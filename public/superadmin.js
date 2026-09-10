@@ -1,4 +1,4 @@
-// superadmin.js - Archer NVR V8.7 Developer Global Console
+// superadmin.js - Archer NVR V8.8 Developer Global Console
 
 document.addEventListener('DOMContentLoaded', () => {
     const saAuthOverlay = document.getElementById('saAuthOverlay');
@@ -19,6 +19,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnCancelAddAdmin = document.getElementById('btnCancelAddAdmin');
     const saAddAdminForm = document.getElementById('saAddAdminForm');
     const saAdminTableBody = document.getElementById('saAdminTableBody');
+
+    // Token Helper
+    function getAuthToken() {
+        return localStorage.getItem('nvr_auth_token') || '';
+    }
+
+    function authFetch(url, options = {}) {
+        const opts = { ...options };
+        opts.headers = opts.headers ? { ...opts.headers } : {};
+        const token = getAuthToken();
+        if (token) {
+            opts.headers['Authorization'] = `Bearer ${token}`;
+        }
+        opts.credentials = 'include';
+        return fetch(url, opts);
+    }
 
     // Password Peek
     document.querySelectorAll('.btn-peek-pwd').forEach(btn => {
@@ -41,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Check Current Superadmin Auth
     async function checkAuth() {
         try {
-            const res = await fetch('/api/auth/status');
+            const res = await authFetch('/api/auth/status');
             const data = await res.json();
             if (data.authenticated && data.role === 'superadmin') {
                 saAuthOverlay.style.display = 'none';
@@ -69,11 +85,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ username, password })
             });
             const data = await res.json();
 
             if (res.ok && data.success) {
+                if (data.token) {
+                    localStorage.setItem('nvr_auth_token', data.token);
+                    localStorage.setItem('nvr_role', data.role);
+                }
                 if (data.role === 'superadmin') {
                     saAuthOverlay.style.display = 'none';
                     saDashboard.style.display = 'block';
@@ -92,7 +113,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Logout
     saBtnLogout.addEventListener('click', async () => {
-        await fetch('/api/auth/logout', { method: 'POST' });
+        try {
+            await authFetch('/api/auth/logout', { method: 'POST' });
+        } catch (e) {}
+        localStorage.removeItem('nvr_auth_token');
+        localStorage.removeItem('nvr_role');
         window.location.reload();
     });
 
@@ -112,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load Super Settings
     async function loadSuperSettings() {
         try {
-            const res = await fetch('/api/superadmin/settings');
+            const res = await authFetch('/api/superadmin/settings');
             if (res.ok) {
                 const s = await res.json();
                 if (saLicenseKey) saLicenseKey.value = s.license || 'ARCHER-PRO-COMMUNITY-2026';
@@ -128,7 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const license = saLicenseKey.value.trim();
         try {
-            const res = await fetch('/api/superadmin/settings', {
+            const res = await authFetch('/api/superadmin/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ license })
@@ -148,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const p2p_relay = saP2pHost.value.trim();
         try {
-            const res = await fetch('/api/superadmin/settings', {
+            const res = await authFetch('/api/superadmin/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ p2p_relay })
@@ -166,7 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load Administrators
     async function loadAdmins() {
         try {
-            const res = await fetch('/api/superadmin/admins');
+            const res = await authFetch('/api/superadmin/admins');
             if (!res.ok) throw new Error('Gagal mengambil daftar admin');
             const data = await res.json();
             renderAdminTable(data.administrators || []);
@@ -215,7 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const res = await fetch('/api/superadmin/admins', {
+            const res = await authFetch('/api/superadmin/admins', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, username, password })
@@ -243,7 +268,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const res = await fetch(`/api/superadmin/admins/${id}`, { method: 'DELETE' });
+            const res = await authFetch(`/api/superadmin/admins/${id}`, { method: 'DELETE' });
             const data = await res.json();
             if (res.ok && data.success) {
                 alert(`Administrator '${username}' berhasil dihapus.`);
