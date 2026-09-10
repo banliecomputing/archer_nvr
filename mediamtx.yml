@@ -1,0 +1,9 @@
+api: yes
+apiAddress: :9997
+webrtcAddress: :8889
+hlsAddress: :8880
+rtspAddress: :8554
+protocols: [tcp]
+
+paths:
+  all_others:

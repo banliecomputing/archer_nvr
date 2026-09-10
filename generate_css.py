@@ -1,4 +1,7 @@
-@import "tailwindcss";
+import sys
+
+def run():
+    css_content = """@import "tailwindcss";
 
 :root {
     --bg-main: #0B0F19;
@@ -139,3 +142,9 @@ body { font-family: var(--font-ui); background-color: var(--bg-main); color: var
     .video-grid { padding: 4px; gap: 4px; }
     .form-row { flex-direction: column; gap: 0; }
 }
+"""
+    with open('public/style.css', 'w') as f:
+        f.write(css_content)
+
+if __name__ == "__main__":
+    run()

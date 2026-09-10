@@ -204,15 +204,19 @@ app.get('/api/auth/status', (req, res) => {
     const hasUsers = dbData.users && dbData.users.length > 0;
     
     let authenticated = false;
+    let username = 'User';
+    let role = 'user';
     const token = req.cookies.nvr_auth_token;
     if (token) {
         try {
-            jwt.verify(token, JWT_SECRET);
+            const decoded = jwt.verify(token, JWT_SECRET);
             authenticated = true;
+            username = decoded.username || 'Admin';
+            role = decoded.role || 'developer';
         } catch (e) {}
     }
     
-    res.json({ needSetup: !hasUsers, authenticated });
+    res.json({ needSetup: !hasUsers, authenticated, username, role });
 });
 
 app.post('/api/auth/setup', (req, res) => {

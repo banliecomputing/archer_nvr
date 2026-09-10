@@ -1,6 +1,6 @@
 // script.js - NVR CCTV Dashboard V6
 
-if(document) document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', () => {
     // Referensi Elemen Live
     const videoGrid = document.getElementById('videoGrid');
     const layoutBtns = document.querySelectorAll('.layout-btn');
@@ -131,8 +131,6 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
                 // Authenticated
                 authOverlay.style.display = 'none';
                 mainApp.style.display = 'flex';
-                const lblUsername = document.getElementById('lblUsername');
-                if(lblUsername) lblUsername.textContent = data.username || 'Admin';
                 initializeApp();
             }
         } catch(e) {
@@ -141,7 +139,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    if(authForm) authForm.addEventListener('submit', async (e) => {
+    authForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = authUsername.value.trim();
         const password = authPassword.value;
@@ -184,7 +182,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
 
     const btnLogout = document.getElementById('btnLogout');
     if (btnLogout) {
-        if(btnLogout) btnLogout.addEventListener('click', async () => {
+        btnLogout.addEventListener('click', async () => {
             try {
                 await fetch('/api/auth/logout', { method: 'POST' });
                 window.location.reload();
@@ -209,12 +207,12 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
     checkAuth();
 
     // Referensi Mobile Menu
-    var btnMobileMenu = document.getElementById('btnMobileMenu');
-    var sidebar = document.querySelector('.sidebar');
-    var sidebarOverlay = document.getElementById('sidebarOverlay');
+    const btnMobileMenu = document.getElementById('btnMobileMenu');
+    const sidebar = document.querySelector('.sidebar');
+    const sidebarOverlay = document.getElementById('sidebarOverlay');
 
     if (btnMobileMenu) {
-        if(btnMobileMenu) btnMobileMenu.addEventListener('click', () => {
+        btnMobileMenu.addEventListener('click', () => {
             if (window.innerWidth <= 768) {
                 // Mobile behavior: slide in/out
                 sidebar.classList.toggle('open');
@@ -234,7 +232,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (sidebarOverlay) {
-        if(sidebarOverlay) sidebarOverlay.addEventListener('click', closeMobileMenu);
+        sidebarOverlay.addEventListener('click', closeMobileMenu);
     }
 
     // --- Manajemen Waktu ---
@@ -243,62 +241,42 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         clockEl.textContent = now.toLocaleTimeString('id-ID', { hour12: false });
     }, 1000);
 
-    /* OLD TAB NAV REMOVED */
-    // Navigasi Baru
-    const navItems = document.querySelectorAll('.nav-item, .nav-subitem');
-    var btnMobileMenu = document.getElementById('btnMobileMenu');
-    var sidebar = document.getElementById('sidebar');
-    var sidebarOverlay = document.getElementById('sidebarOverlay');
-
-    if(btnMobileMenu) {
-        if(btnMobileMenu) btnMobileMenu.addEventListener('click', () => {
-            sidebar.classList.add('mobile-open');
-            sidebarOverlay.classList.add('active');
-        });
-    }
-
-    if(sidebarOverlay) {
-        if(sidebarOverlay) sidebarOverlay.addEventListener('click', () => {
-            sidebar.classList.remove('mobile-open');
-            sidebarOverlay.classList.remove('active');
-        });
-    }
-
-    window.toggleNavGroup = function(headerEl) {
-        headerEl.parentElement.classList.toggle('open');
-    };
-
-    navItems.forEach(item => {
-        if(item) item.addEventListener('click', (e) => {
-            e.preventDefault();
-            // khusus untuk layout-btn live view
-            if(item.classList.contains('layout-btn')) return;
-
-            navItems.forEach(i => i.classList.remove('active'));
+    // --- Navigasi Tabs Utama ---
+    tabBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            tabBtns.forEach(b => b.classList.remove('active'));
             viewPanes.forEach(p => p.classList.remove('active'));
+            sidePanels.forEach(p => p.classList.remove('active'));
             
-            item.classList.add('active');
-            const targetId = item.getAttribute('data-target');
-            const targetEl = document.getElementById(targetId);
-            if(targetEl) targetEl.classList.add('active');
+            btn.classList.add('active');
+            const targetId = btn.getAttribute('data-target');
+            document.getElementById(targetId).classList.add('active');
             
-            if (targetId === 'view-playback') fetchRecordings();
-            if (targetId === 'view-logs') fetchLogs();
-            if (targetId === 'view-setting-record') fetchStorageOptions();
-            if (targetId === 'view-setting-cameras') fetchCameras(); // or renderModalList if we keep the same logic
-
+            if (targetId === 'view-live') {
+                document.getElementById('side-live').classList.add('active');
+            } else if (targetId === 'view-playback') {
+                document.getElementById('side-playback').classList.add('active');
+                fetchRecordings();
+            } else if (targetId === 'view-storage') {
+                document.getElementById('side-storage').classList.add('active');
+                fetchStorageOptions();
+            } else if (targetId === 'view-logs') {
+                document.getElementById('side-logs').classList.add('active');
+                fetchLogs();
+            } else if (targetId === 'view-sysmonitor') {
+                document.getElementById('side-sysmonitor').classList.add('active');
+            }
+            
             if (window.innerWidth <= 768) {
-                sidebar.classList.remove('mobile-open');
-                sidebarOverlay.classList.remove('active');
+                // Jangan tutup otomatis saat pindah tab agar user bisa memilih opsi
             }
         });
     });
 
-
     // --- Fetch System Logs ---
     const btnRefreshLogs = document.getElementById('btnRefreshLogs');
     if (btnRefreshLogs) {
-        if(btnRefreshLogs) btnRefreshLogs.addEventListener('click', fetchLogs);
+        btnRefreshLogs.addEventListener('click', fetchLogs);
     }
 
     async function fetchLogs() {
@@ -354,7 +332,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
 
     const globalStorageForm = document.getElementById('globalStorageForm');
     if (globalStorageForm) {
-        if(globalStorageForm) globalStorageForm.addEventListener('submit', async (e) => {
+        globalStorageForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const val = document.getElementById('globalStorageMode').value;
             const recQ = document.getElementById('globalRecordingQuality')?.value || 'main';
@@ -400,52 +378,22 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateCameraSidebar() {
-        const lblActiveCams = document.getElementById('lblActiveCams');
-        const menuCameraList = document.getElementById('menuCameraList');
-        
-        let activeCount = cameras.filter(c => c.enabled).length;
-        if(lblActiveCams) lblActiveCams.textContent = `${activeCount} Kamera Aktif`;
-
-        if (menuCameraList) {
-            menuCameraList.innerHTML = '';
-            if (cameras.length === 0) {
-                menuCameraList.innerHTML = '<span style="padding: 0.5rem 1.5rem 0.5rem 3rem; color:var(--text-muted); font-size:0.8rem; display:block;">Belum ada kamera</span>';
-                return;
-            }
-            cameras.forEach(cam => {
-                const a = document.createElement('a');
-                a.href = '#';
-                a.className = 'nav-subitem';
-                a.innerHTML = `<span style="color:${cam.enabled ? 'var(--success)' : 'var(--accent)'}; margin-right:5px;">●</span> ${cam.name}`;
-                if(a) a.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    // switch to view-live 1x1
-                    const layoutBtn1 = document.querySelector('.layout-btn[data-grid="1"]');
-                    if (layoutBtn1) layoutBtn1.click();
-                    setTimeout(() => {
-                        document.querySelectorAll('.nav-subitem').forEach(i => i.classList.remove('active'));
-                        a.classList.add('active');
-                    }, 100);
-                });
-                menuCameraList.appendChild(a);
-            });
+        cameraListEl.innerHTML = '';
+        if (cameras.length === 0) {
+            cameraListEl.innerHTML = '<li style="color:var(--text-muted);">Belum ada kamera</li>';
+            return;
         }
-        
-        // legacy
-        if(cameraListEl) {
-            cameraListEl.innerHTML = '';
-            cameras.forEach(cam => {
-                const li = document.createElement('li');
-                if (!cam.enabled) li.classList.add('disabled');
-                li.innerHTML = `<span class="pulse-dot ${cam.enabled ? '' : 'offline'}"></span> ${cam.name}`;
-                cameraListEl.appendChild(li);
-            });
-        }
+        cameras.forEach(cam => {
+            const li = document.createElement('li');
+            if (!cam.enabled) li.classList.add('disabled');
+            li.innerHTML = `<span class="pulse-dot ${cam.enabled ? '' : 'offline'}"></span> ${cam.name}`;
+            cameraListEl.appendChild(li);
+        });
     }
 
     // --- Grid Layout & Dual Stream ---
     layoutBtns.forEach(btn => {
-        if(btn) btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', (e) => {
             layoutBtns.forEach(b => b.classList.remove('active'));
             e.currentTarget.classList.add('active');
             currentGridCount = parseInt(e.currentTarget.getAttribute('data-grid'));
@@ -553,7 +501,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
 
                 initMediaMtxPlayer(cam.id, initialStreamType, cell, 0);
 
-                if(cell) cell.addEventListener('fullscreenchange', () => {
+                cell.addEventListener('fullscreenchange', () => {
                     handleFullscreenChange(cam.id, cell);
                 });
             } else {
@@ -682,11 +630,11 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
                 
             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                 video.src = streamUrl;
-                if(video) video.addEventListener('loadedmetadata', function() {
+                video.addEventListener('loadedmetadata', function() {
                     video.play().catch(e => console.warn('Auto-play prevented', e));
                     setOverlayState('hidden');
                 });
-                if(video) video.addEventListener('error', function() {
+                video.addEventListener('error', function() {
                     setOverlayState('error', 'Gagal Memuat Stream (Native)', 'Unsupported Format');
                 });
             } else {
@@ -786,7 +734,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
 
     // Zoom Buttons
     document.querySelectorAll('.z-btn').forEach(btn => {
-        if(btn) btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', (e) => {
             document.querySelectorAll('.z-btn').forEach(b => b.classList.remove('active'));
             e.target.classList.add('active');
             currentZoom = parseInt(e.target.getAttribute('data-zoom'));
@@ -826,7 +774,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
             block.style.left = `${leftPercent}%`;
             block.style.width = `${widthPct}%`;
             
-            if(block) block.addEventListener('click', (e) => {
+            block.addEventListener('click', (e) => {
                 e.stopPropagation();
                 playChunk(chunk, 0);
             });
@@ -887,14 +835,14 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Interactive scrubber events
-    if(scrollArea) scrollArea.addEventListener('mousedown', (e) => {
+    scrollArea.addEventListener('mousedown', (e) => {
         isDraggingScrubber = true;
         updateScrubberFromEvent(e);
     });
-    if(window) window.addEventListener('mousemove', (e) => {
+    window.addEventListener('mousemove', (e) => {
         if (isDraggingScrubber) updateScrubberFromEvent(e);
     });
-    if(window) window.addEventListener('mouseup', (e) => {
+    window.addEventListener('mouseup', (e) => {
         if (isDraggingScrubber) {
             isDraggingScrubber = false;
             updateScrubberFromEvent(e);
@@ -903,21 +851,21 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Touch support
-    if(scrollArea) scrollArea.addEventListener('touchstart', (e) => {
+    scrollArea.addEventListener('touchstart', (e) => {
         isDraggingScrubber = true;
         updateScrubberFromEvent(e.touches[0]);
     }, {passive: true});
-    if(window) window.addEventListener('touchmove', (e) => {
+    window.addEventListener('touchmove', (e) => {
         if (isDraggingScrubber) updateScrubberFromEvent(e.touches[0]);
     }, {passive: true});
-    if(window) window.addEventListener('touchend', (e) => {
+    window.addEventListener('touchend', (e) => {
         if (isDraggingScrubber) {
             isDraggingScrubber = false;
             seekToScrubberTime();
         }
     });
 
-    if(playbackPlayer) playbackPlayer.addEventListener('timeupdate', () => {
+    playbackPlayer.addEventListener('timeupdate', () => {
         if (isDraggingScrubber) return; 
         if (!currentFileStartSec) return;
         const currentSec = currentFileStartSec + playbackPlayer.currentTime;
@@ -925,7 +873,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         scrubber.style.left = `${pct}%`;
     });
     
-    if(playbackPlayer) playbackPlayer.addEventListener('ended', () => {
+    playbackPlayer.addEventListener('ended', () => {
         const currentIndex = currentPlaybackChunks.findIndex(c => c.startSec === currentFileStartSec);
         if (currentIndex !== -1 && currentIndex + 1 < currentPlaybackChunks.length) {
             const nextChunk = currentPlaybackChunks[currentIndex + 1];
@@ -950,7 +898,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         } catch (err) { console.error(err); }
     }
 
-    if(selRecCam) selRecCam.addEventListener('change', () => {
+    selRecCam.addEventListener('change', () => {
         const camId = selRecCam.value;
         selRecDate.innerHTML = '';
         
@@ -976,7 +924,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         renderPlaybackList();
     });
 
-    if(selRecDate) selRecDate.addEventListener('change', renderPlaybackList);
+    selRecDate.addEventListener('change', renderPlaybackList);
 
     function renderPlaybackList() {
         playbackList.innerHTML = '';
@@ -1023,7 +971,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
             
             li.innerHTML = `🎥 <span>${timePart}</span>`;
             
-            if(li) li.addEventListener('click', () => {
+            li.addEventListener('click', () => {
                 const chunk = currentPlaybackChunks.find(c => c.filename === f);
                 if (chunk) {
                     playChunk(chunk, 0);
@@ -1038,16 +986,21 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Modal Management (Settings) ---
-    // replaced with nav routes
+    btnSettings.addEventListener('click', () => {
+        modal.classList.add('active');
+        fetchSystemSettings();
+        fetchStorageDevices();
+        renderModalList();
+    });
 
-    if(btnCloseSettings) btnCloseSettings.addEventListener('click', () => {
+    btnCloseSettings.addEventListener('click', () => {
         modal.classList.remove('active');
         resetForm();
     });
 
     // Main Modal Tabs
     stabBtns.forEach(btn => {
-        if(btn) btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', (e) => {
             stabBtns.forEach(b => b.classList.remove('active'));
             stabPanes.forEach(p => p.classList.remove('active'));
             btn.classList.add('active');
@@ -1057,7 +1010,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
 
     // Inner Camera Tabs
     ctabBtns.forEach(btn => {
-        if(btn) btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', (e) => {
             ctabBtns.forEach(b => b.classList.remove('active'));
             ctabPanes.forEach(p => p.classList.remove('active'));
             btn.classList.add('active');
@@ -1213,7 +1166,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
     // Storage selection change listener
     const sysStorageSelect = document.getElementById('sysStorageDevice');
     if (sysStorageSelect) {
-        if(sysStorageSelect) sysStorageSelect.addEventListener('change', (e) => {
+        sysStorageSelect.addEventListener('change', (e) => {
             const val = e.target.value;
             const customInput = document.getElementById('sysCustomStoragePath');
             if (val === '__custom__') {
@@ -1232,14 +1185,14 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
 
     const btnRefreshStorage = document.getElementById('btnRefreshStorage');
     if (btnRefreshStorage) {
-        if(btnRefreshStorage) btnRefreshStorage.addEventListener('click', () => {
+        btnRefreshStorage.addEventListener('click', () => {
             fetchStorageDevices();
         });
     }
 
     const sysCustomStorageInput = document.getElementById('sysCustomStoragePath');
     if (sysCustomStorageInput) {
-        if(sysCustomStorageInput) sysCustomStorageInput.addEventListener('input', (e) => {
+        sysCustomStorageInput.addEventListener('input', (e) => {
             const val = e.target.value.trim();
             const matched = detectedStorageDevices.find(d => d.mountPath === val);
             if (matched) {
@@ -1364,7 +1317,7 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
 
     const changePasswordForm = document.getElementById('changePasswordForm');
     if (changePasswordForm) {
-        if(changePasswordForm) changePasswordForm.addEventListener('submit', async (e) => {
+        changePasswordForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const oldPassword = document.getElementById('oldPassword').value;
             const newPassword = document.getElementById('newPassword').value;
@@ -1455,9 +1408,9 @@ if(document) document.addEventListener('DOMContentLoaded', () => {
         ctabBtns[0].click();
     }
 
-    if(btnCancelEdit) btnCancelEdit.addEventListener('click', resetForm);
+    btnCancelEdit.addEventListener('click', resetForm);
 
-    if(cameraForm) cameraForm.addEventListener('submit', async (e) => {
+    cameraForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = document.getElementById('camId').value;
         const payload = {

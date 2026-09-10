@@ -1,9 +1,12 @@
-<!DOCTYPE html>
+import sys
+
+def run():
+    html_content = """<!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Archer_NVR - V8.6 Professional Dashboard</title>
+    <title>Archer_NVR - V8.5 Professional Dashboard</title>
     <link rel="stylesheet" href="style.css">
     <meta name="theme-color" content="#0f172a">
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
@@ -13,7 +16,7 @@
         <div class="auth-card" id="authCard">
             <div class="brand" style="justify-content:center; border:none; padding-bottom:0.5rem;">
                 <span class="icon">🛡️</span>
-                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V8.6</span></h2>
+                <h2>Archer_NVR <span class="badge" style="background:#2563eb; font-size:0.7rem;">V8.5</span></h2>
             </div>
             <p style="text-align:center; color:var(--text-muted); font-size:0.75rem; margin-bottom:1.5rem;">Professional NVR System &bull; Auto-Detect Storage &bull; Live Monitor</p>
             <div class="auth-tabs" id="authTabs" style="display:none;">
@@ -51,7 +54,7 @@
             <div class="sidebar-profile">
                 <div class="brand">
                     <span class="icon">🛡️</span>
-                    <h2>Archer_NVR <span class="badge">V8.6</span></h2>
+                    <h2>Archer_NVR <span class="badge">V8.5</span></h2>
                 </div>
                 <div class="user-info">
                     <div class="avatar">👤</div>
@@ -120,7 +123,7 @@
         <main class="main-content">
             <header class="mobile-header">
                 <button id="btnMobileMenu" class="btn-icon">☰</button>
-                <h2>Archer_NVR <span class="badge">V8.6</span></h2>
+                <h2>Archer_NVR <span class="badge">V8.5</span></h2>
             </header>
 
             <div id="view-home" class="view-pane active">
@@ -128,7 +131,7 @@
                     <h2>Dashboard Home</h2>
                     <p style="color:var(--text-muted); margin-bottom:1rem;">Selamat datang di Sistem Pemantauan Archer NVR.</p>
                     <div style="display:flex; gap:1rem; flex-wrap:wrap;">
-                        <button class="btn btn-primary" onclick="document.querySelector('.nav-subitem[data-grid='4']').click()">Buka Live View</button>
+                        <button class="btn btn-primary" onclick="document.querySelector('.nav-subitem[data-grid=\'4\']').click()">Buka Live View</button>
                     </div>
                 </div>
             </div>
@@ -307,7 +310,7 @@
                 <div class="content-wrapper" style="padding: 2rem;">
                     <h2>Bantuan & Informasi</h2>
                     <div class="camera-form-section" style="margin-top:1rem;">
-                        <p>Dokumentasi dan panduan penggunaan Archer NVR V8.6.</p>
+                        <p>Dokumentasi dan panduan penggunaan Archer NVR V8.5.</p>
                         <ul style="margin-left: 1.5rem; margin-top:1rem; color:var(--text-muted);">
                             <li><strong>Monitor:</strong> Untuk melihat live stream dari kamera spesifik.</li>
                             <li><strong>View:</strong> Untuk mengatur grid multi-kamera (1x1 hingga 4x4).</li>
@@ -321,4 +324,9 @@
     </div>
     <script src="script.js"></script>
 </body>
-</html>
+</html>"""
+    with open('public/index.html', 'w') as f:
+        f.write(html_content)
+
+if __name__ == "__main__":
+    run()
