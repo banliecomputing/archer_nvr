@@ -39,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnRefreshStorage = document.getElementById('btnRefreshStorage');
     const storageDevicePreview = document.getElementById('storageDevicePreview');
     const sysCustomStoragePath = document.getElementById('sysCustomStoragePath');
+    const sysGlobalStorageMode = document.getElementById('sysGlobalStorageMode');
     const sysRecordingQuality = document.getElementById('sysRecordingQuality');
     const systemForm = document.getElementById('systemForm');
     const changePasswordForm = document.getElementById('changePasswordForm');
@@ -426,53 +427,126 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function renderAdminGrid(count) {
-        if (!videoGrid) return;
-        videoGrid.className = `video-grid grid-${count}`;
-        destroyHlsPlayers();
-        videoGrid.innerHTML = '';
+    
+    function getGridMapping(role) {
+        try {
+            return JSON.parse(localStorage.getItem("nvr_grid_mapping_" + role)) || {};
+        } catch(e) {
+            return {};
+        }
+    }
+    
+    function setGridMapping(role, slotIdx, camId) {
+        const mapping = getGridMapping(role);
+        if (camId) {
+            mapping[slotIdx] = camId;
+        } else {
+            delete mapping[slotIdx];
+        }
+        localStorage.setItem("nvr_grid_mapping_" + role, JSON.stringify(mapping));
+    }
 
-        if (cameras.length === 0) {
-            videoGrid.innerHTML = `
-                <div class="cam-cell" style="grid-column: 1 / -1; min-height:300px; display:flex; flex-direction:column; align-items:center; justify-content:center;">
-                    <span style="font-size:2.5rem; margin-bottom:0.75rem;">📹</span>
-                    <h3 style="margin:0 0 0.5rem 0;">Belum Ada Kamera Terpasang</h3>
-                    <p style="color:var(--text-muted); font-size:0.85rem; margin:0 0 1rem 0;">Tambahkan kamera RTSP pertama Anda untuk memulai live streaming.</p>
-                    <button class="btn btn-primary" onclick="document.querySelector('.nav-item[data-target=\\'view-setting-cameras\\']').click()">+ Tambah Kamera Sekarang</button>
-                </div>
-            `;
-            return;
+    window.onGridSelectChange = function(selectElem, role, slotIdx) {
+        setGridMapping(role, slotIdx, selectElem.value);
+        if (role === "admin") {
+            const activeBtn = document.querySelector('.grid-btn.active'); const count = activeBtn ? parseInt(activeBtn.getAttribute('data-grid')) : 4;
+            renderAdminGrid(count);
+        } else {
+            const activeBtn = document.querySelector('.m-grid-btn.active'); const count = activeBtn ? parseInt(activeBtn.getAttribute('data-grid')) : 1;
+            renderMobileGrid(count);
+        }
+    };
+
+    window.toggleFullscreen = function(elemId) {
+        const elem = document.getElementById(elemId);
+        if (!elem) return;
+        if (!document.fullscreenElement) {
+            elem.requestFullscreen().catch(err => {
+                alert("Gagal fullscreen: " + err.message);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    };
+
+    window.toggleGridFullscreen = function(gridId) {
+        const elem = document.getElementById(gridId);
+        if (!elem) return;
+        if (!document.fullscreenElement) {
+            elem.requestFullscreen().catch(err => {
+                alert("Gagal fullscreen: " + err.message);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    };
+
+    function createGridCell(slotIdx, count, role) {
+        const mapping = getGridMapping(role);
+        const mappedCamId = mapping[slotIdx];
+        const cam = cameras.find(c => c.id === mappedCamId);
+        
+        let camOptions = "<option value=\"\">-- Pilih Kamera --</option>";
+        cameras.forEach(c => {
+            camOptions += "<option value=\"" + c.id + "\" " + (c.id === mappedCamId ? "selected" : "") + ">" + c.name + "</option>";
+        });
+
+        const cell = document.createElement("div");
+        cell.className = "cam-cell";
+        cell.style.position = "relative";
+        cell.id = "cell_" + role + "_" + slotIdx;
+
+        const selectHtml = "<select class=\"form-control\" style=\"position:absolute; top:5px; right:5px; width:auto; z-index:20; background:rgba(0,0,0,0.7); color:white; border:none; font-size:0.8rem; padding:4px;\" onchange=\"window.onGridSelectChange(this, '" + role + "', " + slotIdx + ")\">" + camOptions + "</select>";
+
+        if (!cam) {
+            cell.innerHTML = selectHtml + 
+                "<div style=\"display:flex; height:100%; width:100%; align-items:center; justify-content:center; flex-direction:column; background:#1e293b;\">" +
+                    "<span style=\"font-size:2rem; opacity:0.5;\">📹</span>" +
+                    "<span style=\"font-size:0.8rem; color:#94a3b8; margin-top:5px;\">Slot " + (slotIdx + 1) + " Kosong</span>" +
+                "</div>";
+            return cell;
         }
 
-        const displayCams = cameras.slice(0, count);
-        displayCams.forEach((cam, idx) => {
-            const cell = document.createElement('div');
-            cell.className = 'cam-cell';
-            cell.id = `cell_${cam.id}`;
+        const hlsUrl = "/stream/" + cam.mediaMtxPath + "/index.m3u8?token=" + encodeURIComponent(getAuthToken());
+        const videoId = "cam_video_" + role + "_" + slotIdx;
+        
+        cell.innerHTML = selectHtml + 
+            "<video id=\"" + videoId + "\" class=\"cam-player-video\" autoplay muted playsinline controls></video>" +
+            "<div class=\"cam-overlay\" style=\"pointer-events:none;\">" +
+                "<div style=\"display:flex; justify-content:space-between; align-items:center;\">" +
+                    "<span class=\"cam-title\">" + cam.name + "</span>" +
+                    "<span class=\"badge " + (cam.enabled ? "badge-online" : "badge-offline") + "\">" + (cam.enabled ? "LIVE" : "DISABLED") + "</span>" +
+                "</div>" +
+                "<div style=\"display:flex; justify-content:space-between; align-items:flex-end;\">" +
+                    "<span style=\"font-size:0.7rem; color:#94a3b8; background:rgba(0,0,0,0.6); padding:2px 6px; border-radius:3px; font-family:monospace;\">" + (cam.transcode || "passthrough") + "</span>" +
+                    "<div style=\"pointer-events:auto; display:flex; gap:5px;\">" +
+                        "<button class=\"btn-sm btn-secondary\" style=\"font-size:0.7rem; padding:2px 6px;\" onclick=\"window.toggleFullscreen('" + videoId + "')\">⛶</button>" +
+                        "<button class=\"btn-sm btn-secondary\" style=\"font-size:0.7rem; padding:2px 6px;\" onclick=\"window.restartCameraStream('" + cam.id + "')\">🔄</button>" +
+                    "</div>" +
+                "</div>" +
+            "</div>";
+        
+        return { cell, init: () => { if(cam.enabled) initHlsPlayer(videoId, hlsUrl); } };
+    }
 
-            const hlsUrl = `/stream/${cam.mediaMtxPath}/index.m3u8?token=${encodeURIComponent(getAuthToken())}`;
-            const videoId = `cam_video_${cam.id}`;
-
-            cell.innerHTML = `
-                <video id="${videoId}" class="cam-player-video" autoplay muted playsinline controls></video>
-                <div class="cam-overlay">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span class="cam-title">${cam.name}</span>
-                        <span class="badge ${cam.enabled ? 'badge-online' : 'badge-offline'}">${cam.enabled ? 'LIVE' : 'DISABLED'}</span>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; align-items:flex-end;">
-                        <span style="font-size:0.7rem; color:#94a3b8; background:rgba(0,0,0,0.6); padding:2px 6px; border-radius:3px; font-family:monospace;">${cam.transcode || 'passthrough'}</span>
-                        <button class="btn-sm btn-secondary" style="font-size:0.7rem; padding:2px 6px;" onclick="window.restartCameraStream('${cam.id}')">🔄 Restart</button>
-                    </div>
-                </div>
-            `;
-
-            videoGrid.appendChild(cell);
-
-            if (cam.enabled) {
-                initHlsPlayer(videoId, hlsUrl);
+    function renderAdminGrid(count) {
+        if (!videoGrid) return;
+        videoGrid.className = "video-grid grid-" + count;
+        destroyHlsPlayers();
+        videoGrid.innerHTML = "";
+        
+        const inits = [];
+        for (let i = 0; i < count; i++) {
+            const result = createGridCell(i, count, "admin");
+            if (result instanceof HTMLElement) {
+                videoGrid.appendChild(result);
+            } else {
+                videoGrid.appendChild(result.cell);
+                inits.push(result.init);
             }
-        });
+        }
+        
+        inits.forEach(fn => fn());
     }
 
     function initHlsPlayer(elementId, hlsUrl) {
@@ -1197,40 +1271,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    
     function renderMobileGrid(count) {
         if (!mVideoGrid) return;
-        mVideoGrid.className = `video-grid grid-${count}`;
-        mVideoGrid.innerHTML = '';
-
-        if (cameras.length === 0) {
-            mVideoGrid.innerHTML = `
-                <div class="cam-cell" style="padding:2rem; text-align:center;">
-                    <p style="color:var(--text-muted); font-size:0.85rem;">Belum ada kamera yang ditugaskan kepada Anda.</p>
-                </div>
-            `;
-            return;
-        }
-
-        const displayCams = cameras.slice(0, count);
-        displayCams.forEach(cam => {
-            const cell = document.createElement('div');
-            cell.className = 'cam-cell';
-            const hlsUrl = `/stream/${cam.mediaMtxPath}/index.m3u8?token=${encodeURIComponent(getAuthToken())}`;
-            const videoId = `m_vid_${cam.id}`;
-
-            cell.innerHTML = `
-                <video id="${videoId}" class="cam-player-video" autoplay muted playsinline controls></video>
-                <div class="cam-overlay">
-                    <span class="cam-title">${cam.name}</span>
-                    <span class="badge ${cam.enabled ? 'badge-online' : 'badge-offline'}">${cam.enabled ? 'LIVE' : 'OFF'}</span>
-                </div>
-            `;
-            mVideoGrid.appendChild(cell);
-
-            if (cam.enabled) {
-                initHlsPlayer(videoId, hlsUrl);
+        mVideoGrid.className = "video-grid grid-" + count;
+        destroyHlsPlayers();
+        mVideoGrid.innerHTML = "";
+        
+        const inits = [];
+        for (let i = 0; i < count; i++) {
+            const result = createGridCell(i, count, "mobile");
+            if (result instanceof HTMLElement) {
+                mVideoGrid.appendChild(result);
+            } else {
+                mVideoGrid.appendChild(result.cell);
+                inits.push(result.init);
             }
-        });
+        }
+        
+        inits.forEach(fn => fn());
     }
 
     function renderMobileCameraCards() {

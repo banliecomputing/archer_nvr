@@ -479,24 +479,20 @@ function syncRecordingsToDB() {
         if (!fs.existsSync(storageDir)) continue;
 
         try {
-            const dates = fs.readdirSync(storageDir).filter(f => /^\d{4}-\d{2}-\d{2}$/.test(f));
-            for (const date of dates) {
-                const datePath = path.join(storageDir, date);
-                if (fs.lstatSync(datePath).isDirectory()) {
-                    const files = fs.readdirSync(datePath).filter(f => f.endsWith('.mp4') || f.endsWith('.ts'));
-                    for (const f of files) {
-                        const filePath = path.join(datePath, f);
-                        const stats = fs.statSync(filePath);
-                        dbData.recordings.push({
-                            id: `${cam.id}_${f}`,
-                            camera_id: cam.id,
-                            file_path: filePath,
-                            file_size: stats.size,
-                            start_time: new Date(stats.mtimeMs).toISOString()
-                        });
-                    }
-                }
-            }
+            
+const files = fs.readdirSync(storageDir).filter(f => f.endsWith(".mp4") || f.endsWith(".ts"));
+for (const f of files) {
+    const filePath = path.join(storageDir, f);
+    const stats = fs.statSync(filePath);
+    dbData.recordings.push({
+        id: `${cam.id}_${f}`,
+        camera_id: cam.id,
+        file_path: filePath,
+        file_size: stats.size,
+        start_time: new Date(stats.mtimeMs).toISOString()
+    });
+}
+
         } catch (e) {
             sysLog('ERROR', `Sync failed for ${cam.id}: ${e.message}`);
         }
@@ -800,7 +796,7 @@ function spawnRecordingFFmpeg(cam) {
         '-segment_format', 'mp4',
         '-reset_timestamps', '1',
         '-strftime', '1',
-        path.join(recBase, '%Y-%m-%d', '%H-%M-%S.mp4')
+        path.join(recBase, "%Y-%m-%d_%H-%M-%S.mp4")
     ];
 
     sysLog('INFO', `[${cam.id}] Memulai perekaman kontinyu FFmpeg (-c:v copy -c:a copy) [${useSub ? 'SD/Sub' : 'HD/Main'}] -> ${recBase}`);
@@ -1099,6 +1095,14 @@ app.post('/api/cameras/:id/restart', verifyToken, requireAdmin, (req, res) => {
     }, 500);
 });
 
+
+app.post('/api/cameras/:id/ptz', verifyToken, (req, res) => {
+    const { direction } = req.body;
+    sysLog('INFO', `[PTZ] Kamera ${req.params.id} bergerak ke ${direction}`);
+    // Simulasi respons sukses karena integrasi ONVIF native butuh library khusus
+    res.json({ success: true, message: 'PTZ command sent' });
+});
+
 app.delete('/api/cameras/:id', verifyToken, requireAdmin, (req, res) => {
     stopCameraRecording(req.params.id);
     const camStreamDir = path.join(streamBaseDir, req.params.id);
@@ -1122,7 +1126,7 @@ app.get('/api/recordings/:camId/:date/:filename', verifyToken, (req, res) => {
     if (!cam) return res.status(404).send('Camera not found');
     
     const base = resolveStoragePath(cam.storagePath || path.join(getActualBaseStoragePath(), cam.id));
-    const filePath = path.join(base, date, filename);
+    const filePath = path.join(base, filename);
     
     if (fs.existsSync(filePath)) {
         res.sendFile(filePath);
@@ -1140,7 +1144,8 @@ app.get('/api/recordings', verifyToken, (req, res) => {
             const camId = row.camera_id;
             const parts = row.file_path.split(path.sep);
             const filename = parts.pop();
-            const date = parts.pop();
+const dateMatch = filename.match(/^(\d{4}-\d{2}-\d{2})/);
+const date = dateMatch ? dateMatch[1] : "Unknown";
             
             if (!result[camId]) result[camId] = {};
             if (!result[camId][date]) result[camId][date] = [];

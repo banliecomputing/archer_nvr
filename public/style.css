@@ -171,3 +171,22 @@ body { font-family: var(--font-ui); background-color: var(--bg-main); color: var
     .video-grid { padding: 4px; gap: 4px; }
     .form-row { flex-direction: column; gap: 0; }
 }
+
+/* Fullscreen fixes */
+:fullscreen, ::backdrop {
+    background-color: #0f172a;
+}
+:fullscreen .video-grid {
+    height: 100vh;
+    width: 100vw;
+    padding: 0;
+    margin: 0;
+    max-height: none;
+}
+:fullscreen .cam-cell {
+    border-radius: 0;
+    border: none;
+}
+:fullscreen video {
+    object-fit: contain;
+}
