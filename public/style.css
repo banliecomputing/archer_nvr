@@ -190,3 +190,78 @@ body { font-family: var(--font-ui); background-color: var(--bg-main); color: var
 :fullscreen video {
     object-fit: contain;
 }
+
+/* Unified Camera Cell Selection */
+.cam-cell {
+    border: 2px solid transparent;
+    transition: border-color 0.2s;
+    cursor: pointer;
+}
+.cam-cell.selected {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+.cam-cell.empty-cell {
+    cursor: default;
+    border-color: transparent;
+}
+
+/* Floating PTZ Controller */
+.ptz-controller {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(15, 23, 42, 0.85);
+    padding: 10px;
+    border-radius: 50%;
+    display: grid;
+    grid-template-columns: 40px 40px 40px;
+    grid-template-rows: 40px 40px 40px;
+    gap: 5px;
+    z-index: 50;
+    backdrop-filter: blur(4px);
+    border: 1px solid #334155;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+}
+.ptz-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background: #3b82f6;
+    color: white;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+.ptz-btn:hover {
+    background: #2563eb;
+}
+.ptz-btn:active {
+    background: #1d4ed8;
+}
+
+/* Mobile Layout Fixes */
+@media (max-width: 768px) {
+    .video-grid.grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .video-grid.grid-9 { grid-template-columns: repeat(3, 1fr); }
+    .video-grid.grid-16 { grid-template-columns: repeat(4, 1fr); }
+    .cam-cell {
+        aspect-ratio: 16/9; /* Keep proportional */
+        min-height: unset; /* Override any min-height that forces stretching */
+    }
+    
+    /* Make PTZ slightly smaller on mobile */
+    .ptz-controller {
+        grid-template-columns: 35px 35px 35px;
+        grid-template-rows: 35px 35px 35px;
+        bottom: 10px;
+        right: 10px;
+    }
+    .ptz-btn {
+        width: 35px; height: 35px; font-size: 14px;
+    }
+}

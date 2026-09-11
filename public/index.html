@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="icon" href="/Archer.ico?v=2">
     <title>Archer NVR V8.8 - Professional Multi-Tenant Dashboard</title>
     <link rel="stylesheet" href="style.css">
     <meta name="theme-color" content="#0f172a">
@@ -13,7 +14,7 @@
     <div id="authOverlay" class="auth-overlay" style="display:flex;">
         <div class="auth-card" id="authCard" style="max-width:420px;">
             <div class="brand" style="justify-content:center; border:none; padding-bottom:0.5rem; display:flex; align-items:center; gap:0.5rem;">
-                <span class="icon" style="font-size:1.8rem;">🛡️</span>
+                <span class="icon"><img src="Archer.ico?v=2" style="height:2.2rem; width:2.2rem; object-fit:contain; border-radius:6px;"></span>
                 <h2 style="margin:0; font-size:1.3rem;">Archer NVR <span class="badge" style="background:#2563eb; font-size:0.75rem; padding:2px 8px; border-radius:4px;">V8.8</span></h2>
             </div>
             <p style="text-align:center; color:var(--text-muted); font-size:0.8rem; margin-bottom:1.5rem;">
@@ -64,7 +65,7 @@
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-profile">
                 <div class="brand">
-                    <span class="icon" style="font-size:1.5rem;">🛡️</span>
+                    <span class="icon"><img src="Archer.ico?v=2" style="height:1.8rem; width:1.8rem; object-fit:contain; border-radius:6px;"></span>
                     <h2>Archer NVR <span class="badge">V8.8</span></h2>
                 </div>
                 <div class="user-info">
@@ -129,23 +130,40 @@
             </header>
 
             <!-- 1. VIEW MONITOR (LIVE VIEW) -->
+            
             <div id="view-monitor" class="view-pane active">
-                <div style="padding:0.75rem 1rem; background:var(--surface); border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
-                    <div style="display:flex; align-items:center; gap:0.5rem;">
-                        <span style="font-size:0.85rem; color:var(--text-muted);">Layout Grid:</span>
-                        <button class="btn-sm btn-secondary grid-btn" data-grid="1">1x1</button>
-                        <button class="btn-sm btn-secondary grid-btn active" data-grid="4" style="background:#2563eb; color:white;">2x2</button>
-                        <button class="btn-sm btn-secondary grid-btn" data-grid="9">3x3</button>
-                        <button class="btn-sm btn-secondary grid-btn" data-grid="16">4x4</button>
-     <button class="btn-sm btn-primary" style="margin-left:10px;" onclick="window.toggleGridFullscreen(\videoGrid)">⛶ Fullscreen</button>
+                <div style="padding:0.75rem 1rem; background:var(--surface); border-bottom:1px solid var(--border);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                        <div style="display:flex; align-items:center; gap:0.5rem;">
+                            <span style="font-size:0.85rem; color:var(--text-muted);">Layout Grid:</span>
+                            <button class="btn-sm btn-secondary grid-btn active" data-grid="1" style="background:#2563eb; color:white;">1x1</button>
+                            <button class="btn-sm btn-secondary grid-btn" data-grid="4">2x2</button>
+                            <button class="btn-sm btn-secondary grid-btn" data-grid="9">3x3</button>
+                            <button class="btn-sm btn-secondary grid-btn" data-grid="16">4x4</button>
+                        </div>
+                        <div style="display:flex; gap:0.5rem;">
+                            <button class="btn-sm btn-primary" onclick="window.toggleGridFullscreen('videoGrid')">⛶ Fullscreen</button>
+                            <button id="btnReloadStreams" class="btn-sm btn-secondary" title="Muat ulang stream">🔄 Refresh</button>
+                        </div>
                     </div>
-                    <div style="display:flex; align-items:center; gap:1rem;">
-                        <span id="liveClock" style="font-family:monospace; font-size:0.85rem; color:var(--text-muted);">--:--:--</span>
-                        <button id="btnReloadStreams" class="btn-sm btn-secondary" title="Muat ulang stream">🔄 Refresh</button>
+                    <div id="channelBar" style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.75rem;">
+                        <!-- JS akan merender tombol All, CH1, CH2, dst. -->
                     </div>
                 </div>
-                <div class="grid-wrapper">
-                    <div id="videoGrid" class="video-grid grid-4"></div>
+                <div class="grid-wrapper" style="position:relative;">
+                    <div id="videoGrid" class="video-grid grid-1"></div>
+                    <!-- PTZ Controller Floating -->
+                    <div id="ptzController" class="ptz-controller" style="display:none;">
+                        <div></div>
+                        <button class="ptz-btn" onclick="window.ptzMoveSelected('up')">▲</button>
+                        <div></div>
+                        <button class="ptz-btn" onclick="window.ptzMoveSelected('left')">◀</button>
+                        <div style="display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:bold; color:#64748b;">PTZ</div>
+                        <button class="ptz-btn" onclick="window.ptzMoveSelected('right')">▶</button>
+                        <div></div>
+                        <button class="ptz-btn" onclick="window.ptzMoveSelected('down')">▼</button>
+                        <div></div>
+                    </div>
                 </div>
             </div>
 
@@ -497,16 +515,35 @@
 
         <main class="mobile-content">
             <!-- Mobile 1: Live View -->
+            
             <div id="mViewLive" class="mobile-view active">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; gap:0.5rem;">
                     <h3 style="margin:0; font-size:1rem;">Live Streaming</h3>
                     <div style="display:flex; gap:0.4rem;">
-                        <button class="btn-sm btn-secondary m-grid-btn active" data-mgrid="1">1x1</button>
+                        <button class="btn-sm btn-secondary m-grid-btn active" data-mgrid="1" style="background:#2563eb; color:white;">1x1</button>
                         <button class="btn-sm btn-secondary m-grid-btn" data-mgrid="4">2x2</button>
-                        <button id="btnMRefreshStreams" class="btn-sm btn-secondary">🔄</button>
+                        <button class="btn-sm btn-secondary m-grid-btn" data-mgrid="9">3x3</button>
+                        <button class="btn-sm btn-primary" onclick="window.toggleGridFullscreen('mVideoGrid')">⛶</button>
                     </div>
                 </div>
-                <div id="mVideoGrid" class="video-grid grid-1" style="min-height:50vh;"></div>
+                <div id="mChannelBar" style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.75rem;">
+                    <!-- Channel Selector Injected via JS -->
+                </div>
+                <div class="grid-wrapper" style="position:relative;">
+                    <div id="mVideoGrid" class="video-grid grid-1" style="min-height:50vh;"></div>
+                    <!-- PTZ Controller Mobile -->
+                    <div id="mPtzController" class="ptz-controller" style="display:none;">
+                        <div></div>
+                        <button class="ptz-btn" onclick="window.ptzMoveSelected('up')">▲</button>
+                        <div></div>
+                        <button class="ptz-btn" onclick="window.ptzMoveSelected('left')">◀</button>
+                        <div style="display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:bold; color:#64748b;">PTZ</div>
+                        <button class="ptz-btn" onclick="window.ptzMoveSelected('right')">▶</button>
+                        <div></div>
+                        <button class="ptz-btn" onclick="window.ptzMoveSelected('down')">▼</button>
+                        <div></div>
+                    </div>
+                </div>
             </div>
 
             <!-- Mobile 2: Playback -->
