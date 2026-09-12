@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Archer NVR V8.8 - Superadmin Global Console</title>
+    <title>Archer NVR V8.9 - Superadmin Global Console</title>
     <link rel="stylesheet" href="style.css">
     <meta name="theme-color" content="#0f172a">
 </head>
@@ -12,7 +12,7 @@
         <div class="auth-card" style="max-width:440px;">
             <div class="brand" style="justify-content:center; border:none; padding-bottom:0.5rem; display:flex; align-items:center; gap:0.5rem;">
                 <span style="font-size:1.8rem;">⚡</span>
-                <h2 style="margin:0; font-size:1.3rem;">Archer NVR <span class="badge" style="background:#8b5cf6; font-size:0.75rem; padding:2px 8px; border-radius:4px;">V8.8 Superadmin</span></h2>
+                <h2 style="margin:0; font-size:1.3rem;">Archer NVR <span class="badge" style="background:#8b5cf6; font-size:0.75rem; padding:2px 8px; border-radius:4px;">V8.9 Superadmin</span></h2>
             </div>
             <p style="text-align:center; color:var(--text-muted); font-size:0.8rem; margin-bottom:1.5rem;">Console Pengembang &bull; Multi-Tenant Global Manager</p>
             <form id="saLoginForm">
@@ -42,7 +42,7 @@
             <div style="display:flex; align-items:center; gap:0.75rem;">
                 <span style="font-size:2rem;">⚡</span>
                 <div>
-                    <h1 style="font-size:1.4rem; margin:0;">Archer NVR <span class="badge" style="background:#8b5cf6; font-size:0.75rem; padding:2px 8px; border-radius:4px; vertical-align:middle;">V8.8 Global Console</span></h1>
+                    <h1 style="font-size:1.4rem; margin:0;">Archer NVR <span class="badge" style="background:#8b5cf6; font-size:0.75rem; padding:2px 8px; border-radius:4px; vertical-align:middle;">V8.9 Global Console</span></h1>
                     <span style="font-size:0.8rem; color:var(--text-muted);">Tingkat Pengembang &bull; Arsitektur Multi-Tenant Shinobi CCTV</span>
                 </div>
             </div>
@@ -160,8 +160,33 @@
                 </table>
             </div>
         </div>
-    </div>
 
+        <!-- Informasi Sistem & Reset -->
+        <div class="camera-form-section" style="margin-bottom:2rem; border-color:#f43f5e;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+                <div style="flex:1;">
+                    <h2 style="font-size:1.25rem; margin:0; display:flex; align-items:center; gap:0.5rem; color:#f43f5e;">
+                        <span>ℹ️</span> Informasi Sistem & Basis Data (About)
+                    </h2>
+                    <p style="font-size:0.8rem; color:var(--text-muted); margin-top:0.25rem;">
+                        Detail versi aplikasi dan lokasi direktori penting NVR pada Armbian STB.
+                    </p>
+                    <div id="saSystemInfoBox" style="margin-top:1rem; font-size:0.85rem; line-height:1.6; background:rgba(0,0,0,0.2); padding:1rem; border-radius:6px; font-family:monospace; color:#cbd5e1;">
+                        Memuat data...
+                    </div>
+                </div>
+                <div style="width:300px; padding-left:1.5rem; border-left:1px solid var(--border);">
+                    <h3 style="font-size:1rem; margin-top:0; margin-bottom:0.75rem; color:#ef4444;">🚨 Zona Bahaya</h3>
+                    <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:1rem;">
+                        Tindakan ini akan mengembalikan seluruh pengaturan database (User, Kamera, Storage) kembali ke kondisi standar pabrik (default). Rekaman MP4 di penyimpanan tidak akan dihapus.
+                    </p>
+                    <button id="saBtnFactoryReset" class="btn btn-primary" style="background:#ef4444; width:100%; font-size:0.85rem; border-color:#ef4444;">
+                        ⚠️ Reset Pengaturan Pabrik
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
     <script src="superadmin.js"></script>
 </body>
 </html>

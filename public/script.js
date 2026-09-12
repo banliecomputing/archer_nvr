@@ -161,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    authForm.addEventListener('submit', async (e) => {
+    if (authForm) authForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         authError.textContent = '';
         const username = authUsername.value.trim();
@@ -289,14 +289,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (btnMobileMenu && sidebar) {
-            btnMobileMenu.addEventListener('click', () => {
+            if (btnMobileMenu) btnMobileMenu.addEventListener('click', () => {
                 sidebar.classList.toggle('mobile-open');
                 if (sidebarOverlay) sidebarOverlay.classList.toggle('active');
             });
         }
 
         if (sidebarOverlay) {
-            sidebarOverlay.addEventListener('click', () => {
+            if (sidebarOverlay) sidebarOverlay.addEventListener('click', () => {
                 if (sidebar) sidebar.classList.remove('mobile-open');
                 sidebarOverlay.classList.remove('active');
             });
@@ -329,13 +329,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (btnReloadStreams) {
-            btnReloadStreams.addEventListener('click', () => {
+            if (btnReloadStreams) btnReloadStreams.addEventListener('click', () => {
                 fetchCameras();
             });
         }
 
         if (btnScrollToForm && cameraForm) {
-            btnScrollToForm.addEventListener('click', () => {
+            if (btnScrollToForm) btnScrollToForm.addEventListener('click', () => {
                 resetCameraForm();
                 cameraForm.scrollIntoView({ behavior: 'smooth' });
             });
@@ -550,7 +550,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /* second cameraForm removed */
     if (cameraForm) {
-        cameraForm.addEventListener('submit', async (e) => {
+        if (cameraForm) cameraForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const id = document.getElementById('camId').value;
             const payload = {
@@ -599,7 +599,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /* second globalStorageForm removed */
     if (globalStorageForm) {
-        globalStorageForm.addEventListener('submit', async (e) => {
+        if (globalStorageForm) globalStorageForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const payload = {
                 targetDevice: document.getElementById('sysStorageDevice') ? document.getElementById('sysStorageDevice').value : '',
@@ -624,7 +624,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Refresh Storage button
     /* second btnRefreshStorage removed */
     if (btnRefreshStorage) {
-        btnRefreshStorage.addEventListener('click', async () => {
+        if (btnRefreshStorage) btnRefreshStorage.addEventListener('click', async () => {
             try {
                 const res = await authFetch('/api/system/storage_devices');
                 if (!res.ok) return;
@@ -1062,7 +1062,7 @@ let recordingsMap = {};
     }
 
     // Interactive scrubber events
-    scrollArea.addEventListener('mousedown', (e) => {
+    if (scrollArea) scrollArea.addEventListener('mousedown', (e) => {
         isDraggingScrubber = true;
         updateScrubberFromEvent(e);
     });
@@ -1078,7 +1078,7 @@ let recordingsMap = {};
     });
 
     // Touch support
-    scrollArea.addEventListener('touchstart', (e) => {
+    if (scrollArea) scrollArea.addEventListener('touchstart', (e) => {
         isDraggingScrubber = true;
         updateScrubberFromEvent(e.touches[0]);
     }, {passive: true});
@@ -1092,7 +1092,7 @@ let recordingsMap = {};
         }
     });
 
-    playbackPlayer.addEventListener('timeupdate', () => {
+    if (playbackPlayer) playbackPlayer.addEventListener('timeupdate', () => {
         if (isDraggingScrubber) return; 
         if (!currentFileStartSec) return;
         const currentSec = currentFileStartSec + playbackPlayer.currentTime;
@@ -1100,7 +1100,7 @@ let recordingsMap = {};
         scrubber.style.left = `${pct}%`;
     });
     
-    playbackPlayer.addEventListener('ended', () => {
+    if (playbackPlayer) playbackPlayer.addEventListener('ended', () => {
         const currentIndex = currentPlaybackChunks.findIndex(c => c.startSec === currentFileStartSec);
         if (currentIndex !== -1 && currentIndex + 1 < currentPlaybackChunks.length) {
             const nextChunk = currentPlaybackChunks[currentIndex + 1];
@@ -1125,7 +1125,7 @@ let recordingsMap = {};
         } catch (err) { console.error(err); }
     }
 
-    selRecCam.addEventListener('change', () => {
+    if (selRecCam) selRecCam.addEventListener('change', () => {
         const camId = selRecCam.value;
         selRecDate.innerHTML = '';
         
@@ -1151,7 +1151,7 @@ let recordingsMap = {};
         renderPlaybackList();
     });
 
-    selRecDate.addEventListener('change', renderPlaybackList);
+    if (selRecDate) selRecDate.addEventListener('change', renderPlaybackList);
 
     function renderPlaybackList() {
         playbackList.innerHTML = '';
