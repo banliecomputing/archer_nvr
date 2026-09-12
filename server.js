@@ -111,10 +111,14 @@ function getDefaultDb() {
     };
 }
 
+let cachedDb = null;
 function getNvrDb() {
+    if (cachedDb) return cachedDb;
     try {
         if (fs.existsSync(nvrDbFile)) {
-            const data = JSON.parse(fs.readFileSync(nvrDbFile, 'utf8'));
+            const raw = fs.readFileSync(nvrDbFile, 'utf8');
+            if (raw.trim() === '') throw new Error('Empty db file');
+            const data = JSON.parse(raw);
             const def = getDefaultDb();
             if (!data.super_settings) data.super_settings = def.super_settings;
             if (!data.administrators || data.administrators.length === 0) data.administrators = def.administrators;
@@ -123,24 +127,31 @@ function getNvrDb() {
             if (!data.recordings) data.recordings = [];
             if (!data.system_logs) data.system_logs = [];
             if (data.recording_path === undefined) data.recording_path = '';
+            cachedDb = data;
             return data;
         }
         const initial = getDefaultDb();
         saveNvrDb(initial);
+        cachedDb = initial;
         return initial;
     }
     catch (e) {
+        console.error('Error reading DB. Returning default but not overwriting:', e);
         const initial = getDefaultDb();
-        saveNvrDb(initial);
+        cachedDb = initial;
         return initial;
     }
 }
 
 function saveNvrDb(data) {
+    cachedDb = data;
     try {
-        fs.writeFileSync(nvrDbFile, JSON.stringify(data, null, 2));
-        fs.writeFileSync(path.join(dataDir, 'nvr.db.json'), JSON.stringify(data, null, 2));
-    } catch(e) {}
+        const jsonStr = JSON.stringify(data, null, 2);
+        fs.writeFileSync(nvrDbFile, jsonStr);
+        fs.writeFileSync(path.join(dataDir, 'nvr.db.json'), jsonStr);
+    } catch(e) {
+        console.error('Error saving DB:', e);
+    }
 }
 
 // Logger
@@ -193,6 +204,17 @@ function getActualBaseStoragePath() {
     if (settings.globalStoragePath && settings.globalStoragePath.trim() !== '') {
         return settings.globalStoragePath;
     }
+    
+    // Auto-detect and prioritize external drive if no path is configured!
+    try {
+        const external = detectStorageDevices().filter(d => d.category === 'External' && d.totalGB > 0);
+        if (external.length > 0) {
+            // Sort by free space descending
+            external.sort((a, b) => b.freeGB - a.freeGB);
+            return external[0].mountPath;
+        }
+    } catch(e) {}
+
     return baseStoragePath;
 }
 
@@ -475,7 +497,7 @@ function syncRecordingsToDB() {
     
     for (const cam of cams) {
         if (cam.recordMode !== 'continuous') continue;
-        const storageDir = resolveStoragePath(cam.storagePath || path.join(getActualBaseStoragePath(), cam.id));
+        const storageDir = resolveStoragePath(cam.storagePath || path.join(getActualBaseStoragePath(), 'Arch3r_NVR', cam.id));
         if (!fs.existsSync(storageDir)) continue;
 
         try {
@@ -520,7 +542,7 @@ function ensureRecordFolders() {
     
     getCameras().forEach(cam => {
         if (cam.recordMode === 'continuous') {
-            const base = resolveStoragePath(cam.storagePath || path.join(getActualBaseStoragePath(), cam.id));
+            const base = resolveStoragePath(cam.storagePath || path.join(getActualBaseStoragePath(), 'Arch3r_NVR', cam.id));
             [today, tomorrow].forEach(date => {
                 const d = path.join(base, date);
                 if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
@@ -757,7 +779,7 @@ function spawnRecordingFFmpeg(cam) {
 
     stopCameraRecording(cam.id);
 
-    const recBase = resolveStoragePath(cam.storagePath || path.join(getActualBaseStoragePath(), cam.id));
+    const recBase = resolveStoragePath(cam.storagePath || path.join(getActualBaseStoragePath(), 'Arch3r_NVR', cam.id));
     if (!fs.existsSync(recBase)) {
         fs.mkdirSync(recBase, { recursive: true });
     }
@@ -886,7 +908,7 @@ function runRetention() {
         if (cam.recordMode !== 'continuous') continue;
         const maxDays = cam.maxStorageDays || 7;
         const maxGB = cam.maxFolderSizeGB || 10;
-        const base = resolveStoragePath(cam.storagePath || path.join(getActualBaseStoragePath(), cam.id));
+        const base = resolveStoragePath(cam.storagePath || path.join(getActualBaseStoragePath(), 'Arch3r_NVR', cam.id));
         if (!fs.existsSync(base)) continue;
 
         const limitMs = Date.now() - (maxDays * 86400000);
@@ -1017,7 +1039,7 @@ app.post('/api/cameras', verifyToken, requireAdmin, (req, res) => {
         resolution: resolution || "1080p",
         fps: fps || 30,
         recordMode: recordMode || 'disabled',
-        storagePath: storagePath || path.join(baseStoragePath, `cam_${Date.now()}`),
+        storagePath: storagePath || path.join(getActualBaseStoragePath(), 'Arch3r_NVR', newCam.id),
         maxStorageDays: parseInt(maxStorageDays) || 7,
         maxFolderSizeGB: parseFloat(maxFolderSizeGB) || 10,
         segmentDurationSec: parseInt(segmentDurationSec) || 900
@@ -1125,7 +1147,7 @@ app.get('/api/recordings/:camId/:date/:filename', verifyToken, (req, res) => {
     const cam = getCameras().find(c => c.id === camId);
     if (!cam) return res.status(404).send('Camera not found');
     
-    const base = resolveStoragePath(cam.storagePath || path.join(getActualBaseStoragePath(), cam.id));
+    const base = resolveStoragePath(cam.storagePath || path.join(getActualBaseStoragePath(), 'Arch3r_NVR', cam.id));
     const filePath = path.join(base, filename);
     
     if (fs.existsSync(filePath)) {
@@ -1606,10 +1628,11 @@ app.post('/api/system/storage-devices/select', verifyToken, requireAdmin, (req, 
         dbData.recording_path = trimmedPath;
         saveNvrDb(dbData);
 
-        // 2. Sinkronkan juga ke settings.json
+        // 2. Sinkronkan juga ke super_settings
         settings.globalStoragePath = trimmedPath;
         settings.globalStorageMode = 'custom';
-        fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+        dbData.super_settings = settings;
+        saveNvrDb(dbData);
 
         sysLog('INFO', `Lokasi Penyimpanan Rekaman Diperbarui: ${trimmedPath} (Tersimpan di data/nvr_db.json)`);
 
@@ -1670,14 +1693,14 @@ app.post('/api/settings', verifyToken, requireAdmin, (req, res) => {
 
     // Jika globalStoragePath atau recording_path di-update, simpan juga ke data/nvr_db.json
     const targetStorage = req.body.recording_path || req.body.globalStoragePath;
+    const dbData = getNvrDb();
+    dbData.super_settings = settings;
+
     if (targetStorage !== undefined) {
-        const dbData = getNvrDb();
         dbData.recording_path = targetStorage;
-        saveNvrDb(dbData);
         settings.globalStoragePath = targetStorage;
     }
-
-    fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+    saveNvrDb(dbData);
     sysLog('INFO', `Pengaturan Sistem Diperbarui (Storage: ${settings.globalStoragePath || settings.globalStorageMode}, Recording Quality: ${settings.recordingQuality || 'main'}, MediaMTX Port: ${settings.mediamtxPort || 8889})`);
 
     syncMediaMtxConfig();

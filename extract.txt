@@ -1,0 +1,151 @@
+            playChunk(nextChunk, 0);
+        }
+    });
+
+    async function fetchRecordings() {
+        try {
+            const res = await fetch('/api/recordings');
+            recordingsMap = await res.json(); 
+            
+            selRecCam.innerHTML = '<option value="">-- Pilih Kamera --</option>';
+            cameras.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id; opt.textContent = c.name;
+                selRecCam.appendChild(opt);
+            });
+            
+            selRecDate.innerHTML = '<option>Pilih Kamera Dulu</option>';
+            playbackList.innerHTML = '';
+        } catch (err) { console.error(err); }
+    }
+
+    selRecCam.addEventListener('change', () => {
+        const camId = selRecCam.value;
+        selRecDate.innerHTML = '';
+        
+        if (!camId || !recordingsMap[camId]) {
+            selRecDate.innerHTML = '<option>Tidak ada rekaman</option>';
+            playbackList.innerHTML = '';
+            return;
+        }
+
+        const dates = Object.keys(recordingsMap[camId]).sort().reverse();
+        if (dates.length === 0) {
+            selRecDate.innerHTML = '<option>Tidak ada rekaman</option>';
+            playbackList.innerHTML = '';
+            return;
+        }
+        
+        dates.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d; opt.textContent = d;
+            selRecDate.appendChild(opt);
+        });
+        
+        renderPlaybackList();
+    });
+
+    selRecDate.addEventListener('change', renderPlaybackList);
+
+    function renderPlaybackList() {
+        playbackList.innerHTML = '';
+        currentPlaybackChunks = [];
+        
+        const camId = selRecCam.value;
+        const date = selRecDate.value;
+        
+        if (!camId || !date || !recordingsMap[camId] || !recordingsMap[camId][date]) {
+            renderTimeline();
+            return;
+        }
+
+        currentPlaybackCam = camId;
+        currentPlaybackDate = date;
+
+        let files = recordingsMap[camId][date];
+        files.sort(); 
+
+        if(files.length === 0) {
+            playbackList.innerHTML = '<li>Tidak ada klip</li>';
+            renderTimeline();
+            return;
+        }
+
+        const camObj = cameras.find(c => c.id === camId);
+        const camName = camObj ? camObj.name : camId;
+
+        // Process files for timeline
+        files.forEach(f => {
+            currentPlaybackChunks.push({
+                startSec: parseTimeToSeconds(f),
+                duration: 900,
+                filename: f
+            });
+        });
+        
+        // Sort for list (descending)
+        const sortedDesc = [...files].reverse();
+
+        sortedDesc.forEach(f => {
+            const li = document.createElement('li');
+            const timePart = f.replace('.mp4', '').replace('.ts', '').replace(/-/g, ':');
+            
+            li.innerHTML = `🎥 <span>${timePart}</span>`;
+            
+            li.addEventListener('click', () => {
+                const chunk = currentPlaybackChunks.find(c => c.filename === f);
+                if (chunk) {
+                    playChunk(chunk, 0);
+                }
+            });
+            
+            playbackList.appendChild(li);
+        });
+
+        // Update timeline
+        renderTimeline();
+    }
+
+    // --- Modal Management (Settings) ---
+    btnSettings.addEventListener('click', () => {
+        modal.classList.add('active');
+        fetchSystemSettings();
+        fetchStorageDevices();
+        renderModalList();
+    });
+
+    btnCloseSettings.addEventListener('click', () => {
+        modal.classList.remove('active');
+        resetForm();
+    });
+
+    // Main Modal Tabs
+    stabBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            stabBtns.forEach(b => b.classList.remove('active'));
+            stabPanes.forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById(btn.getAttribute('data-target')).classList.add('active');
+        });
+    });
+
+    // Inner Camera Tabs
+    ctabBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            ctabBtns.forEach(b => b.classList.remove('active'));
+            ctabPanes.forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById(btn.getAttribute('data-target')).classList.add('active');
+        });
+    });
+
+    // --- Armbian Real-time System Monitoring Engine ---
+    async function updateSystemStats() {
+        try {
+            const res = await fetch('/api/system/stats');
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!data) return;
+
+            // 1. CPU Usage (%)
+            const topCpuVal = document.getElementById('topCpuVal');
