@@ -143,15 +143,39 @@ function getNvrDb() {
     }
 }
 
+let isSavingDb = false;
+let pendingDbSave = false;
 function saveNvrDb(data) {
     cachedDb = data;
-    try {
-        const jsonStr = JSON.stringify(data, null, 2);
-        fs.writeFileSync(nvrDbFile, jsonStr);
-        fs.writeFileSync(path.join(dataDir, 'nvr.db.json'), jsonStr);
-    } catch(e) {
-        console.error('Error saving DB:', e);
+    scheduleDbSave();
+}
+
+function scheduleDbSave() {
+    if (isSavingDb) {
+        pendingDbSave = true;
+        return;
     }
+    isSavingDb = true;
+    setTimeout(() => {
+        try {
+            const jsonStr = JSON.stringify(cachedDb, null, 2);
+            // Atomic writes to prevent corruption on armbian
+            const tmpFile = nvrDbFile + '.tmp';
+            fs.writeFileSync(tmpFile, jsonStr);
+            fs.renameSync(tmpFile, nvrDbFile);
+            
+            const backupFile = path.join(dataDir, 'nvr.db.json');
+            fs.writeFileSync(backupFile + '.tmp', jsonStr);
+            fs.renameSync(backupFile + '.tmp', backupFile);
+        } catch(e) {
+            console.error('Error saving DB:', e);
+        }
+        isSavingDb = false;
+        if (pendingDbSave) {
+            pendingDbSave = false;
+            scheduleDbSave();
+        }
+    }, 200);
 }
 
 // Logger
